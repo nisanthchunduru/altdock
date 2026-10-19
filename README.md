@@ -1,2 +1,2 @@
 # altdock
-Productivity-focused MacOS Dock alternative
+Productivity-focused MacOS Dock alternative for the AI era
