@@ -242,6 +242,61 @@ struct DockPanelControllerTests {
         #expect(fixture.preferences.reserveSpace)
     }
 
+    @Test("Full-screen Spaces never get a dock panel, even with cached app icons")
+    func skipsFullScreenPanels() throws {
+        let fixture = try PanelFixture()
+        defer { fixture.stop() }
+        fixture.tracker.fullScreenIDs = [100]
+        fixture.model.refresh()
+        _ = fixture.controller
+        #expect(fixture.factory.latest[100] == nil)
+        #expect(fixture.factory.shared == nil)
+        #expect(fixture.controller.presentationDescription == "Dock hidden in full-screen Space")
+        #expect(fixture.controller.isEnabled)
+    }
+
+    @Test("Full-screen mode cannot reveal a dock through auto-hide or the shared fallback", arguments: [false, true])
+    func noFullScreenFallback(_ autoHide: Bool) throws {
+        let fixture = try PanelFixture(usePerSpacePanels: false)
+        defer { fixture.stop() }
+        _ = fixture.controller
+        let shared = try #require(fixture.factory.shared)
+        fixture.preferences.autoHide = autoHide
+        fixture.tracker.fullScreenIDs = [100]
+        fixture.model.refresh()
+        fixture.controller.synchronizePanels()
+        fixture.controller.reveal()
+        #expect(!shared.isOrdered)
+        #expect(fixture.controller.isEnabled)
+    }
+
+    @Test("Entering full-screen closes an existing panel and leaving full-screen restores it")
+    func fullScreenLifecycle() throws {
+        let fixture = try PanelFixture()
+        defer { fixture.stop() }
+        _ = fixture.controller
+        let original = try #require(fixture.factory.latest[100])
+        fixture.tracker.fullScreenIDs = [100]
+        fixture.model.refresh()
+        fixture.controller.synchronizePanels()
+        #expect(original.closeCount == 1)
+        #expect(!original.isOrdered)
+        fixture.tracker.fullScreenIDs = []
+        fixture.model.refresh()
+        fixture.controller.synchronizePanels()
+        #expect(fixture.factory.latest[100] !== original)
+        #expect(fixture.factory.latest[100]?.isOrdered == true)
+    }
+
+    @Test("A single maximized app on an ordinary Desktop still gets a dock")
+    func keepsOrdinaryDesktopWithOneApp() throws {
+        let fixture = try PanelFixture()
+        defer { fixture.stop() }
+        _ = fixture.controller
+        #expect(!fixture.model.isFullScreenSpaceActive)
+        #expect(fixture.factory.latest[100]?.isOrdered == true)
+    }
+
     @Test("Global hide/show preserves all panels; quit disposes them and ignores late updates")
     func hideAndStop() throws {
         let fixture = try PanelFixture()
@@ -297,10 +352,12 @@ private final class PanelFixture {
 private final class PanelTracker: SpaceWindowTracking {
     var activeID: UInt64 = 100
     var snapshots: [UInt64: [SpaceWindow]]?
+    var fullScreenIDs: Set<UInt64>? = []
     var usesSkyLight: Bool { snapshots != nil }
     var backendDescription: String { "Fixture" }
     func refresh(regularProcessIDs: Set<Int32>) {}
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? { activeID }
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { fullScreenIDs }
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? {
         SpaceWindowSelection(spaceID: activeID, windows: snapshots?[activeID] ?? [])
     }

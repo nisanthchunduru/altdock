@@ -15,10 +15,12 @@ final class DockModel: ObservableObject {
     @Published private(set) var isSwitchingSpace = true
     @Published private(set) var activeSpaceID: UInt64?
     @Published private(set) var spaceApplications: [UInt64: [DockApplication]]?
+    @Published private(set) var fullScreenSpaceIDs: Set<UInt64> = []
 
+    var isFullScreenSpaceActive: Bool { activeSpaceID.map { fullScreenSpaceIDs.contains($0) } ?? false }
     var trackingDescription: String { windowTracker.backendDescription }
     var currentSpaceWindows: [SpaceWindow] {
-        guard let bounds = displayBounds() else { return [] }
+        guard !isFullScreenSpaceActive, let bounds = displayBounds() else { return [] }
         let processIDs = Set(runningApplications().map(\.processIdentifier))
         if let selection = windowTracker.selection(on: bounds, regularProcessIDs: processIDs),
            !isSwitchingSpace || selection.spaceID != nil { return selection.windows }
@@ -97,6 +99,7 @@ final class DockModel: ObservableObject {
 
     func refresh() {
         let running = runningApplications()
+        refreshFullScreenSpaces()
         windowTracker.refresh(regularProcessIDs: Set(running.map(\.processIdentifier)))
         publishAllSpaces(running: running)
         if !publishSelection(running: running), isSwitchingSpace, now() < fallbackReadyAt {
@@ -105,7 +108,7 @@ final class DockModel: ObservableObject {
     }
 
     func activate(_ application: NSRunningApplication, expectedSpaceID: UInt64? = nil) {
-        guard !isSwitchingSpace, let bounds = displayBounds() else { return }
+        guard !isSwitchingSpace, !isFullScreenSpaceActive, let bounds = displayBounds() else { return }
         let runningIDs = Set(runningApplications().map(\.processIdentifier))
         windowTracker.refresh(regularProcessIDs: runningIDs)
         guard let selection = windowTracker.selection(on: bounds, regularProcessIDs: runningIDs)
@@ -118,8 +121,21 @@ final class DockModel: ObservableObject {
         spaceRefresh?.cancel()
         fallbackReadyAt = now().addingTimeInterval(0.4)
         isSwitchingSpace = true
+        refreshFullScreenSpaces()
         _ = publishSelection(running: runningApplications())
         scheduleRefresh(after: windowTracker.usesSkyLight ? 0 : 0.08)
+    }
+
+    private var fullScreenDisplayBounds: CGRect?
+
+    private func refreshFullScreenSpaces() {
+        let bounds = displayBounds()
+        if fullScreenDisplayBounds != bounds {
+            fullScreenSpaceIDs = []
+            fullScreenDisplayBounds = bounds
+        }
+        guard let bounds, let ids = windowTracker.fullScreenSpaceIDs(on: bounds) else { return }
+        if fullScreenSpaceIDs != ids { fullScreenSpaceIDs = ids }
     }
 
     private func publishAllSpaces(running: [NSRunningApplication]) {
@@ -171,7 +187,8 @@ final class DockModel: ObservableObject {
         if orderedIDs != applications.map(\.id) {
             applications = orderedIDs.compactMap { applicationsByID[$0].map(DockApplication.init) }
         }
-        if activeSpaceID != selection.spaceID { activeSpaceID = selection.spaceID }
+        let selectedSpaceID = selection.spaceID ?? windowTracker.activeSpaceID(on: bounds)
+        if activeSpaceID != selectedSpaceID { activeSpaceID = selectedSpaceID }
         let frontmostID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if activeProcessID != frontmostID { activeProcessID = frontmostID }
         if isSwitchingSpace { isSwitchingSpace = false }

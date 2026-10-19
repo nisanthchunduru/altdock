@@ -22,6 +22,7 @@ final class WindowReservationController: ObservableObject {
 
     var status: String {
         if !preferences.reserveSpace { return "Space reservation off" }
+        if model.isFullScreenSpaceActive { return "Reservation paused in full-screen Space" }
         if !hasAccessibility { return "Reserve Space needs Accessibility…" }
         return preferences.autoHide || !dock.isEnabled ? "Reservation paused while hidden" : "Reserve Space active (maximized/tiled)"
     }
@@ -82,7 +83,10 @@ final class WindowReservationController: ObservableObject {
         task = Task {
             guard !Task.isCancelled else { inFlight = false; return }
             let report: ReservationScanReport
-            if let request { report = await engine.reconcile(request) }
+            if model.isFullScreenSpaceActive {
+                await engine.pauseForFullScreen()
+                report = ReservationScanReport(state: "Reservation paused in full-screen Space")
+            } else if let request { report = await engine.reconcile(request) }
             else {
                 if !model.isSwitchingSpace { await engine.restore() }
                 report = ReservationScanReport(state: model.isSwitchingSpace ? "Changing Space" : status)
@@ -94,7 +98,7 @@ final class WindowReservationController: ObservableObject {
     }
 
     private func makeRequest() -> ReservationRequest? {
-        guard preferences.reserveSpace, !preferences.autoHide, dock.isEnabled, hasAccessibility,
+        guard !model.isFullScreenSpaceActive, preferences.reserveSpace, !preferences.autoHide, dock.isEnabled, hasAccessibility,
               let screen = preferences.screen,
               let primary = NSScreen.screens.first else { return nil }
         let visible = screen.visibleFrame

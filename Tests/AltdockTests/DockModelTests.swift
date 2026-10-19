@@ -99,6 +99,46 @@ struct DockModelTests {
         #expect(fixture.model.applications.count == 1)
     }
 
+    @Test("Full-screen status is available before window discovery and suppresses reservation candidates")
+    func fullScreenBeforeWindowDiscovery() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.model.refresh()
+        fixture.tracker.fullScreenIDs = [200]
+        fixture.tracker.current = nil
+        fixture.tracker.destination = 200
+        fixture.model.spaceDidChange()
+        #expect(fixture.model.isFullScreenSpaceActive)
+        #expect(fixture.model.currentSpaceWindows.isEmpty)
+        fixture.model.activate(fixture.application, expectedSpaceID: 200)
+        #expect(fixture.activatedWindowIDs.isEmpty)
+    }
+
+    @Test("Returning from a full-screen Space restores ordinary Desktop behavior without changing preferences")
+    func leavingFullScreenSpace() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.tracker.fullScreenIDs = [200]
+        fixture.tracker.current = fixture.selection(spaceID: 200)
+        fixture.model.refresh()
+        #expect(fixture.model.isFullScreenSpaceActive)
+        fixture.tracker.current = fixture.selection(spaceID: 100)
+        fixture.model.spaceDidChange()
+        #expect(!fixture.model.isFullScreenSpaceActive)
+        #expect(fixture.model.currentSpaceWindows.count == 1)
+    }
+
+    @Test("A transient topology failure does not forget that the current Space is full-screen")
+    func retainsFullScreenClassification() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.tracker.fullScreenIDs = [100]
+        fixture.model.refresh()
+        fixture.tracker.fullScreenIDs = nil
+        fixture.model.refresh()
+        #expect(fixture.model.isFullScreenSpaceActive)
+    }
+
     @Test("An outgoing Space's panel cannot activate an app after the active Space changes")
     func rejectsClicksFromAnotherSpace() {
         let fixture = Fixture()
@@ -181,10 +221,12 @@ private final class FakeWindowTracker: SpaceWindowTracking {
     var current: SpaceWindowSelection?
     var destination: UInt64?
     var snapshots: [UInt64: [SpaceWindow]]?
+    var fullScreenIDs: Set<UInt64>? = []
     var refreshCount = 0
 
     func refresh(regularProcessIDs: Set<Int32>) { refreshCount += 1 }
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? { destination ?? current?.spaceID }
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { fullScreenIDs }
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { snapshots }
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? { current }
 }

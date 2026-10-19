@@ -69,6 +69,10 @@ actor ReservationEngine {
         return report
     }
 
+    func pauseForFullScreen() {
+        events.stop()
+    }
+
     func restore() {
         events.stop()
         if AXIsProcessTrusted() {

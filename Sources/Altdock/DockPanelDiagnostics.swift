@@ -11,6 +11,7 @@ struct DockPanelReport: Codable, Equatable {
     }
     let displayID: UInt32?
     let activeSpaceID: UInt64?
+    let fullScreenSpaceIDs: [UInt64]
     let mode: String
     let style: DockStyle
     let panels: [Panel]

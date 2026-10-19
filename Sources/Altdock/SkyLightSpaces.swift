@@ -8,6 +8,11 @@ protocol SpaceQuerying {
     func spaceIDs(on displayBounds: CGRect) -> Set<UInt64>?
     func activeSpaceID(on displayBounds: CGRect) -> UInt64?
     func isWindowOrderedIn(_ windowID: UInt32) -> Bool?
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>?
+}
+
+extension SpaceQuerying {
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { nil }
 }
 
 @MainActor
@@ -72,16 +77,30 @@ final class SkyLightSpaces: SpaceQuerying {
         return identifiers.isEmpty ? nil : identifiers
     }
 
-    func spaceIDs(on displayBounds: CGRect) -> Set<UInt64>? {
+    private func displaySpaces(on displayBounds: CGRect) -> [[String: Any]]? {
         guard let identifier = copyDisplayIdentifier(connection, displayBounds)?.takeRetainedValue(),
               let result = copyDisplaySpaces(connection),
               let displays = result.takeRetainedValue() as? [[String: Any]] else { return nil }
         let display = displays.first { $0["Display Identifier"] as? String == identifier as String }
             ?? (displays.count == 1 ? displays.first : nil)
-        guard let entries = display?["Spaces"] as? [[String: Any]] else { return nil }
+        return display?["Spaces"] as? [[String: Any]]
+    }
+
+    func spaceIDs(on displayBounds: CGRect) -> Set<UInt64>? {
+        guard let entries = displaySpaces(on: displayBounds) else { return nil }
         let identifiers = entries.compactMap { ($0["ManagedSpaceID"] as? NSNumber)?.uint64Value }
         guard identifiers.count == entries.count else { return nil }
         return Set(identifiers.filter { $0 != 0 })
+    }
+
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? {
+        guard let entries = displaySpaces(on: displayBounds) else { return nil }
+        var fullScreenIDs: Set<UInt64> = []
+        for entry in entries {
+            guard let id = entry["ManagedSpaceID"] as? NSNumber, let type = entry["type"] as? NSNumber else { return nil }
+            if type.intValue == 4 { fullScreenIDs.insert(id.uint64Value) }
+        }
+        return fullScreenIDs
     }
 
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? {

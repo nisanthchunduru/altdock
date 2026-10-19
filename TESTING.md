@@ -56,7 +56,9 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Open/close an app window on a Space, then leave and return: its existing panel updates correctly. Empty Spaces retain hidden panels and reveal them only when a qualifying app appears.
 - [ ] Create/delete/reorder Spaces in Mission Control: panels are added/closed without ghosts, duplicate bars, or unintended desktop switching.
 - [ ] Select another display, unplug/reconnect it, and change scaling: old panels close and the new display gets the correct set. Test both separate-Spaces and shared-Spaces display configurations.
-- [ ] Test full-screen Spaces and Split View. A successful membership assignment is not proof that macOS displays the auxiliary panel there.
+- [ ] Enter a native full-screen app (Zoom, Safari, etc.) or Split View: no Altdock panel or hover label appears, including via auto-hide reveal or shared-panel fallback. `--panel-status` reports the full-screen Space ID and no panel assigned to it; reservation diagnostics report paused.
+- [ ] Return to an ordinary Desktop: its cached dock and reservation resume without changing user settings. One maximized app on a normal Desktop must not suppress Altdock.
+- [ ] With multiple displays, enter full screen on the other display: Altdock on the selected normal Desktop must remain available.
 - [ ] With auto-hide on, only the active panel responds to the reveal edge. Hide/show from the menu applies globally. Quit leaves no Altdock panels on any Space.
 - [ ] For A/B comparison, quit and run `open dist/Altdock.app --args --shared-panel`; relaunch without the argument to restore the prototype. This uses the same signed binary and needs no re-signing.
 - [ ] Verify stale clicks from an outgoing panel do not activate an app after changing Spaces.
@@ -137,7 +139,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 - [ ] Select each connected display. Membership and panel position follow that display, including monitors above or left of the main display.
 - [ ] Disconnect the selected display: the dock falls back to the primary display. Reconnect it: it returns to the saved display when the ID is unchanged.
-- [ ] Enter and leave full-screen apps and Split View; evaluate whether macOS allows the auxiliary panel there.
+- [ ] Enter and leave full-screen apps and Split View; verify Altdock stays absent and does not reserve space in full-screen Spaces, then resumes on ordinary Desktops.
 - [ ] Change display scaling and the system Dock’s size/location/auto-hide settings: Altdock remains on screen.
 - [ ] Sleep and wake the Mac: membership refreshes without duplicate panels or timers.
 - [ ] Move the app to `/Applications`, enable Launch at Login, and log out/in. Disable it and verify it no longer launches.

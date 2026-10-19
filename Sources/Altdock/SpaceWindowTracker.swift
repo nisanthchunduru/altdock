@@ -13,12 +13,14 @@ protocol SpaceWindowTracking {
     var backendDescription: String { get }
     func refresh(regularProcessIDs: Set<Int32>)
     func activeSpaceID(on displayBounds: CGRect) -> UInt64?
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>?
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection?
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]?
 }
 
 extension SpaceWindowTracking {
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? { nil }
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { nil }
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { nil }
 }
 
@@ -59,6 +61,10 @@ final class SpaceWindowTracker: SpaceWindowTracking {
 
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? {
         spaces?.activeSpaceID(on: displayBounds)
+    }
+
+    func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? {
+        spaces?.fullScreenSpaceIDs(on: displayBounds)
     }
 
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? {

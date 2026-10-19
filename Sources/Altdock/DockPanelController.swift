@@ -47,6 +47,8 @@ final class DockPanelController: ObservableObject {
         }
         model.$spaceApplications.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
+        model.$fullScreenSpaceIDs.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
         model.$applications.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
         model.$activeProcessID.combineLatest(model.$activeSpaceID, model.$isSwitchingSpace)
@@ -98,14 +100,14 @@ final class DockPanelController: ObservableObject {
             updateCurrentSpace()
             return
         }
-        for (id, surface) in surfaces where snapshots[id] == nil {
+        for (id, surface) in surfaces where snapshots[id] == nil || model.fullScreenSpaceIDs.contains(id) {
             surface.close()
             surfaces.removeValue(forKey: id)
             lastInteraction.removeValue(forKey: id)
         }
         failedSpaces.formIntersection(snapshots.keys)
         for id in snapshots.keys.sorted() {
-            guard let applications = snapshots[id], !failedSpaces.contains(id) else { continue }
+            guard let applications = snapshots[id], !failedSpaces.contains(id), !model.fullScreenSpaceIDs.contains(id) else { continue }
             let surface = surfaces[id] ?? makeSurface(id)
             surface.update(applications: applications, isUpdating: false, layout: display.layout(applicationCount: applications.count, style: preferences.style))
             if surfaces[id] == nil {
@@ -124,7 +126,7 @@ final class DockPanelController: ObservableObject {
         guard !stopped, let display else { return }
         if let id = model.activeSpaceID, let surface = surfaces[id] {
             surface.updateFocus(model.activeProcessID)
-        } else if !model.applications.isEmpty {
+        } else if !model.applications.isEmpty && !model.isFullScreenSpaceActive {
             let surface = sharedSurface ?? makeSurface(nil)
             sharedSurface = surface
             surface.update(
@@ -133,7 +135,7 @@ final class DockPanelController: ObservableObject {
             )
             surface.updateFocus(model.activeProcessID)
         }
-        let description = currentKey == 0
+        let description = model.isFullScreenSpaceActive ? "Dock hidden in full-screen Space" : currentKey == 0
             ? (usePerSpacePanels ? "Shared panel · placement/data fallback" : "Shared panel · compatibility mode")
             : "One panel per Space (\(surfaces.count))" + (failedSpaces.isEmpty ? "" : " · \(failedSpaces.count) fallback")
         if presentationDescription != description { presentationDescription = description }
@@ -165,10 +167,10 @@ final class DockPanelController: ObservableObject {
         }
         if !preferences.autoHide {
             for (id, surface) in surfaces {
-                if model.spaceApplications?[id]?.isEmpty == false { surface.show() }
+                if !model.fullScreenSpaceIDs.contains(id) && model.spaceApplications?[id]?.isEmpty == false { surface.show() }
                 else { surface.hide() }
             }
-            if currentKey == 0 && !model.applications.isEmpty { sharedSurface?.show() }
+            if currentKey == 0 && !model.applications.isEmpty && !model.isFullScreenSpaceActive { sharedSurface?.show() }
             else { sharedSurface?.hide() }
             return
         }
@@ -176,7 +178,7 @@ final class DockPanelController: ObservableObject {
         if currentKey != 0 { sharedSurface?.hide() }
         guard let surface = currentSurface else { return }
         let hasApplications = currentKey == 0 ? !model.applications.isEmpty : model.spaceApplications?[currentKey]?.isEmpty == false
-        guard hasApplications else { surface.hide(); return }
+        guard hasApplications, !model.isFullScreenSpaceActive else { surface.hide(); return }
         let mouse = NSEvent.mouseLocation
         let reveal = DockGeometry.revealZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
         let travel = DockGeometry.travelZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
@@ -204,6 +206,6 @@ final class DockPanelController: ObservableObject {
         if let sharedSurface {
             panels.append(.init(spaceID: nil, windowNumber: sharedSurface.windowNumber, applicationProcessIDs: model.applications.map(\.id), frame: NSStringFromRect(sharedSurface.frame), ordered: sharedSurface.isOrdered))
         }
-        report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, mode: stopped ? "Stopped" : presentationDescription, style: preferences.style, panels: panels))
+        report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, fullScreenSpaceIDs: model.fullScreenSpaceIDs.sorted(), mode: stopped ? "Stopped" : presentationDescription, style: preferences.style, panels: panels))
     }
 }

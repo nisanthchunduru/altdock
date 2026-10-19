@@ -206,6 +206,16 @@ Reservation is independent of automatic empty-panel visibility (`isEnabled` rema
 
 Regression tests cover unknown startup, populated/empty destination caches, refresh failures, first/last apps, auto-hide reveal, background membership, native show rejection, and reservation preference independence. Cache is session-memory state, not disk persistence across app restarts.
 
+## Suppressing Altdock in native full-screen Spaces
+
+The user requested no dock or reservation on a full-screen app's Desktop. `SkyLightSpaces.fullScreenSpaceIDs(on:)` reads the selected display's managed Space `type` (4 = full screen, 0 = ordinary Desktop); `SpaceWindowTracker` exposes this independently of window discovery. `DockModel` refreshes the classification on polling and Space changes, retaining it on transient failures and clearing it when display bounds change.
+
+Full-screen IDs are excluded from panel creation; an existing panel newly classified full-screen is closed. Shared fallback and auto-hide reveal also respect the active full-screen gate. Reservation does not create requests for such Spaces and pauses its observers while preserving normal-Desktop adjustment records, avoiding unnecessary undo/redo on unrelated windows. It resumes when returning. Existing AX checks still exclude individual full-screen windows from writes.
+
+Do not infer full screen from a single app, window dimensions, or the name Zoom: a maximized window on an ordinary Desktop should keep Altdock. This targets native full-screen Spaces (including Split View); presentation modes that remain ordinary Desktop windows are not automatically classified as native full screen. Without private Space metadata, do not guess from geometry. Tests cover cached apps, newly created full-screen Spaces before window discovery, topology read failures, shared mode, auto-hide reveal, return to normal Desktops, and preservation of normal maximized-window behavior.
+
+A native probe opened only its own NSWindow in full-screen mode. The running Altdock reported `Dock hidden in full-screen Space`, zero panels assigned to the new full-screen Space, `Reservation paused in full-screen Space`, and WindowServer reported zero on-screen Altdock windows. Closing the test window returned to ordinary-Desktop behavior with reservation active again. No other app's window was toggled or resized by the probe.
+
 ## Verification priorities
 
 Test geometry in Quartz's top-left coordinate system, including negative monitor coordinates and system Dock/menu-bar insets; known/unknown Spaces; loop suppression; manual overrides; restoration guards; fixed-size/minimum-size apps; missing permissions; default-enabled migration; and preference backup/apply/restore failures. Native acceptance must cover Mission Control, full screen, multi-monitor arrangements, app/tiling-manager conflicts, normal quit, force quit, and restart. Unit tests are not proof of behavior in every third-party app.
