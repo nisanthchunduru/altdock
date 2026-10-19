@@ -6,6 +6,22 @@ import Testing
 @Suite("One persistent dock panel per Space")
 @MainActor
 struct DockPanelControllerTests {
+    @Test("Every Space inherits the native Dock edge, thickness, and base icon size", arguments: DockEdge.allCases)
+    func nativeDockStyle(_ edge: DockEdge) throws {
+        let style = DockStyle(edge: edge, iconSize: 48, footprint: 74)
+        let fixture = try PanelFixture(style: style)
+        defer { fixture.stop() }
+        _ = fixture.controller
+        for panel in fixture.factory.created {
+            switch edge {
+            case .bottom: #expect(panel.frame.minY == 8 && panel.frame.height == 66)
+            case .left: #expect(panel.frame.minX == 8 && panel.frame.width == 66)
+            case .right: #expect(panel.frame.maxX == 1432 && panel.frame.width == 66)
+            }
+        }
+        #expect(fixture.preferences.iconSize == 48)
+    }
+
     @Test("Inactive and empty Spaces get their own preloaded, ordered panels")
     func preloadsEverySpace() throws {
         let fixture = try PanelFixture()
@@ -217,10 +233,10 @@ private final class PanelFixture {
         makeSurface: { [factory] in factory.make($0) }, report: { _ in }
     )
 
-    init(usePerSpacePanels: Bool = true) throws {
+    init(usePerSpacePanels: Bool = true, style: DockStyle = DockStyle()) throws {
         self.usePerSpacePanels = usePerSpacePanels
         defaults = try #require(UserDefaults(suiteName: suite))
-        preferences = DockPreferences(defaults: defaults)
+        preferences = DockPreferences(defaults: defaults, style: style)
         tracker.snapshots = [100: [SpaceWindow(id: 1, processID: application.processIdentifier, bounds: CGRect(x: 0, y: 0, width: 800, height: 600))], 200: []]
         model.refresh()
     }

@@ -1,3 +1,4 @@
+import AltdockCore
 import Darwin
 import Foundation
 
@@ -5,10 +6,13 @@ final class SystemDockSession {
     private struct Record: Codable {
         let token: UUID
         let original: SystemDockSettings
+        let appearance: DockStyle?
     }
 
     private let directory: URL
     private let preferences: any SystemDockPreferenceAccess
+    private let appearanceProvider: (SystemDockSettings) -> DockStyle
+    private(set) var dockStyle: DockStyle?
     private var lockDescriptor: Int32 = -1
     private var token: UUID?
     private var recordURL: URL { directory.appendingPathComponent("system-dock.json") }
@@ -17,9 +21,14 @@ final class SystemDockSession {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Altdock", isDirectory: true)
     }
 
-    init(directory: URL = defaultDirectory, preferences: any SystemDockPreferenceAccess = SystemDockPreferences()) {
+    init(
+        directory: URL = defaultDirectory,
+        preferences: any SystemDockPreferenceAccess = SystemDockPreferences(),
+        appearanceProvider: @escaping (SystemDockSettings) -> DockStyle = NativeDockAppearance.capture
+    ) {
         self.directory = directory
         self.preferences = preferences
+        self.appearanceProvider = appearanceProvider
     }
 
     deinit { unlock() }
@@ -27,13 +36,16 @@ final class SystemDockSession {
     func begin(startGuardian: (UUID) throws -> Void) throws {
         try lock(wait: false)
         do {
-            let original = try readRecord()?.original ?? preferences.read()
-            let record = Record(token: UUID(), original: original)
+            let existing = try readRecord()
+            let original = try existing?.original ?? preferences.read()
+            let appearance = existing?.appearance ?? appearanceProvider(original)
+            let record = Record(token: UUID(), original: original, appearance: appearance)
             try JSONEncoder().encode(record).write(to: recordURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recordURL.path)
             token = record.token
+            dockStyle = appearance
             try startGuardian(record.token)
-            try preferences.apply(.altdock)
+            try preferences.apply(.parked(replacing: original))
         } catch {
             try? restore()
             unlock()

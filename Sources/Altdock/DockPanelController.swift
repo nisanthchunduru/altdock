@@ -1,3 +1,4 @@
+import AltdockCore
 import AppKit
 import Combine
 
@@ -106,7 +107,7 @@ final class DockPanelController: ObservableObject {
         for id in snapshots.keys.sorted() {
             guard let applications = snapshots[id], !failedSpaces.contains(id) else { continue }
             let surface = surfaces[id] ?? makeSurface(id)
-            surface.update(applications: applications, isUpdating: false, layout: display.layout(applicationCount: applications.count, preferredIconSize: preferences.iconSize))
+            surface.update(applications: applications, isUpdating: false, layout: display.layout(applicationCount: applications.count, style: preferences.style))
             if surfaces[id] == nil {
                 guard surface.attach(to: id) else {
                     surface.close()
@@ -128,7 +129,7 @@ final class DockPanelController: ObservableObject {
             sharedSurface = surface
             surface.update(
                 applications: model.applications, isUpdating: model.isSwitchingSpace,
-                layout: display.layout(applicationCount: model.applications.count, preferredIconSize: preferences.iconSize)
+                layout: display.layout(applicationCount: model.applications.count, style: preferences.style)
             )
             surface.updateFocus(model.activeProcessID)
         }
@@ -171,8 +172,8 @@ final class DockPanelController: ObservableObject {
         if currentKey != 0 { sharedSurface?.hide() }
         guard let surface = currentSurface else { return }
         let mouse = NSEvent.mouseLocation
-        let reveal = CGRect(x: surface.frame.minX, y: display.frame.minY, width: surface.frame.width, height: 4)
-        let travel = CGRect(x: surface.frame.minX - 10, y: display.frame.minY, width: surface.frame.width + 20, height: surface.frame.maxY - display.frame.minY + 10)
+        let reveal = DockGeometry.revealZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
+        let travel = DockGeometry.travelZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
         if reveal.contains(mouse) || (surface.isOrdered && travel.contains(mouse)) || surface.isKeyWindow {
             lastInteraction[currentKey] = Date()
         }
@@ -197,6 +198,6 @@ final class DockPanelController: ObservableObject {
         if let sharedSurface {
             panels.append(.init(spaceID: nil, windowNumber: sharedSurface.windowNumber, applicationProcessIDs: model.applications.map(\.id), frame: NSStringFromRect(sharedSurface.frame), ordered: sharedSurface.isOrdered))
         }
-        report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, mode: stopped ? "Stopped" : presentationDescription, panels: panels))
+        report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, mode: stopped ? "Stopped" : presentationDescription, style: preferences.style, panels: panels))
     }
 }

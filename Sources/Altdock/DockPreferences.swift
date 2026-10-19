@@ -1,10 +1,10 @@
+import AltdockCore
 import AppKit
 
 @MainActor
 final class DockPreferences: ObservableObject {
-    @Published var iconSize: Double {
-        didSet { defaults.set(iconSize, forKey: "iconSize") }
-    }
+    let style: DockStyle
+    var iconSize: CGFloat { style.iconSize }
     @Published var autoHide: Bool {
         didSet { defaults.set(autoHide, forKey: "autoHide") }
     }
@@ -17,10 +17,9 @@ final class DockPreferences: ObservableObject {
 
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, style: DockStyle = DockStyle()) {
         self.defaults = defaults
-        let storedSize = defaults.double(forKey: "iconSize")
-        iconSize = [40.0, 52.0, 64.0].contains(storedSize) ? storedSize : 52
+        self.style = style
         autoHide = defaults.bool(forKey: "autoHide")
         reserveSpace = defaults.object(forKey: "reserveSpace") as? Bool ?? true
         displayID = CGDirectDisplayID(clamping: defaults.integer(forKey: "displayID"))

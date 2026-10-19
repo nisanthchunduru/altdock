@@ -13,7 +13,7 @@ Requires macOS 13+ and a Swift 6+ toolchain (Xcode or Command Line Tools). No th
 open dist/Altdock.app
 ```
 
-The script creates a release `.app` bundle with an icon and an ad-hoc signature. **Quit Altdock before rebuilding or replacing its bundle.** For everyday use, copy `dist/Altdock.app` to `/Applications` and launch that copy. Enable **Launch at Login** from Altdock’s menu only after putting it in its permanent location.
+The script creates a release `.app` bundle signed with the **Altdock** identity in your login Keychain. If that identity is missing or ambiguous, the build fails rather than silently falling back to ad-hoc signing. **Quit Altdock before rebuilding or replacing its bundle.** For everyday use, copy `dist/Altdock.app` to `/Applications` and launch that copy. Enable **Launch at Login** only after placing it in its permanent location.
 
 For development:
 
@@ -31,20 +31,30 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 
 ## Using Altdock
 
-- **Click** an icon to activate the app. Hover to magnify it and see its name.
+- **Click** an icon to activate the app. Hover to see its name; icons keep the captured native size rather than using Altdock-specific magnification.
 - **Right-click** for Open, Hide, or Quit. Quit uses the app’s normal termination flow, not force-quit.
-- The dot beneath each icon indicates a running app; the wider indicator marks the frontmost app.
-- The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, icon size, display selection, and launch at login.
-- With **Automatically Hide** enabled, move the pointer to the bottom edge beneath the dock to reveal it.
-- Icons shrink to accommodate more apps; horizontal scrolling handles overflow.
+- Icons are vertically centered in bottom docks and horizontally centered in side docks. The running indicator is drawn separately, centered in the gap between the icon's image bounds and the dock's screen-facing border, so it cannot shift the icon. A wider indicator marks the frontmost app.
+- The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, display selection, and launch at login, and reports the captured native edge and icon size.
+- With **Automatically Hide** enabled, move the pointer to the corresponding bottom, left, or right screen edge to reveal Altdock.
+- Icons retain the native base size. Horizontal or vertical scrolling handles overflow instead of shrinking them.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
+
+## Matching the native Dock
+
+Before parking the system Dock, Altdock captures its original **bottom/left/right edge**, **base icon size**, and **edge footprint**. That snapshot drives every Space's panel. The bar's length still fits that Space's apps; it does not keep empty space merely to match the native Dock's full app list.
+
+Altdock no longer uses its own Small/Medium/Large presets. Change the native Dock's size while Altdock is quit, then launch Altdock to capture it. The old Altdock `iconSize` preference is ignored. A crash/relaunch reuses the saved original appearance rather than copying the temporarily parked Dock's edge.
+
+A native 64-point icon and 90-point edge footprint produce an 82-point visible panel plus an 8-point screen-edge margin. The former implementation used a 93-point panel plus the margin, unnecessarily consuming 11 extra points. Fixed-size hover feedback replaces the previous icon enlargement so it needs no additional permanent headroom.
+
+Native metrics use read-only CoreDock queries and the `tilesize` preference. When native geometry is unavailable (for example, an already auto-hidden or magnified Dock), thickness falls back to the calibrated icon-size-plus-26-point footprint. This mirrors the base size and footprint, not every private macOS rendering detail or magnification animation.
 
 ## Persistent panels per Space — prototype
 
 - Each known Space on the selected display gets a separate `NSPanel`, SwiftUI hosting view, and presentation state, including inactive/empty Spaces. One shared model still does window discovery; this is not a separate scan/timer per Space.
 - Panels use managed, Space-bound collection behavior rather than `canJoinAllSpaces`/`stationary`. macOS controls their visibility as desktops move. In always-visible mode, inactive panels remain **ordered in their own Spaces**, not moved onto or shown over the active desktop.
 - `SLSMoveWindowsToManagedSpace` is dynamically loaded to attach **only Altdock-owned panels**. Creation occurs at zero opacity; membership must read back as exactly the destination Space before a panel can be shown. Altdock does not move other applications' windows between Spaces or programmatically switch desktops.
-- Panels sit **8 points above the display's physical bottom**, not above the old system Dock's reserved work area. A lingering bottom inset in `NSScreen.visibleFrame` must not lift Altdock. Horizontal work-area insets still constrain width and centering.
+- Panels sit **8 points inside the original bottom, left, or right display edge**, not inside the system Dock's stale work-area inset. The non-docked axis is centered in the visible work area.
 - Switching Spaces updates focus/visibility, not panel membership, root hosting views, or frame sizes. Membership changes within a Space can still change that Space's dock size. Display changes rebuild the relevant panels, deleted Spaces close theirs, and quit closes all panels.
 - Auto-hide remains available; only the active panel responds to the reveal edge. Inactive panels are hidden in auto-hide mode. Hide Altdock hides every panel.
 - If all-Spaces data or placement is unavailable, a shared panel is used as a compatibility fallback. A failed placement is closed invisibly and is not repeatedly retried; recreating the Space/display or relaunching retries it. The menu reports the active presentation mode. Full-screen Spaces and multi-display arrangements still require hands-on testing; membership verification alone does not prove native animation/visibility in every macOS configuration.
@@ -65,10 +75,10 @@ Quit and launch without that argument to return to per-Space panels. `--public-w
 
 ## Space reservation — on by default
 
-Grant **Accessibility** through Altdock's menu if its status says access is missing. Startup only checks permission; it never automatically prompts. Explicit requests re-check the live grant and do nothing when permission is already granted. Altdock automatically shortens maximized and bottom-tiled windows to leave room above its dock, preserving their top, left, and width. Reserve Space is already on, including for existing installations without a saved preference.
+Grant **Accessibility** through Altdock's menu if its status says access is missing. Startup only checks permission; it never automatically prompts. Explicit requests re-check the live grant and do nothing when permission is already granted. Altdock keeps maximized/edge-tiled windows clear of its captured edge. Bottom and right docks shorten the window; left docks shift its left edge inward while preserving its right edge. Reserve Space is already on, including for existing installations without a saved preference.
 
 - This is Accessibility-based window adjustment, **not** a system-wide change to `NSScreen.visibleFrame`. Floating windows, dialogs, full-screen/minimized windows, non-resizable windows, and windows whose identity or attributes cannot be read safely are left alone.
-- Clearance is based on the configured icon size, not app count or hover magnification, and is measured from the same physical display bottom as the panel. It does not add the system Dock's old bottom inset a second time. Maximized windows ending at either the reported work-area bottom or the full display bottom can qualify; windows already clear of Altdock are not expanded. Switching Spaces does not continuously resize app windows as icons change.
+- Clearance uses the captured native edge footprint plus a four-point gap, independently of the current app count. It does not add the system Dock's old inset twice. Windows aligned with either the reported work area or physical edge can qualify; already-clear windows are not expanded.
 - AX events are coalesced for 150 ms, with three-second reconciliation for missed events. Window reads, observer registration, and writes run off the UI thread. App/window attribute access uses a 250 ms messaging timeout. An unsupported optional `AXFullScreen` flag does not disqualify a normal window; a failed read is still retried safely. Writable position is required only if the size change actually displaces the window.
 - Resize verification allows up to eight observations, separated by 60 ms, for asynchronous window animations. Transient write failures receive bounded retries rather than permanent suppression after one attempt.
 - The engine suppresses its own notifications and yields after repeated competing writes. A later user interaction followed by a new maximize/tile geometry change starts a fresh adjustment rather than exhausting a lifetime retry count. It reads only aggregate mouse/key event counts—not keystrokes or event contents—to distinguish new interaction from its own writes.
@@ -91,7 +101,7 @@ If access is granted but a particular app's `AXWindows` query fails, that app ma
 
 ## Transitioning to and from the system Dock
 
-On launch, Altdock saves the system Dock's exact **position** and **Automatically hide and show** setting, then moves it to the **right** and enables **auto-hide**, changing only settings that need it. No magnification, icon, size, animation, or delay preferences are changed. The system Dock is restarted when these values change, which may cause a brief visual transition.
+On launch, Altdock saves the system Dock's exact **position** and **Automatically hide and show** setting, along with Altdock's appearance reference. It enables auto-hide and parks the system Dock on the **right** when its original edge was bottom/left, or at the **bottom** when its original edge was right. Altdock stays on the original edge. Only settings that need changing are written; no magnification, icon, size, animation, or delay preferences are changed. Restarting the system Dock to apply changes may cause a brief visual transition.
 
 On quit, those two saved settings are restored, including removing keys that were originally absent. A lightweight helper process also restores them if the main Altdock process crashes or is force-quit. A session lock prevents a second instance from overwriting the original snapshot; a token prevents an old helper from restoring a newer session's settings.
 
@@ -127,7 +137,17 @@ See [REQUIREMENTS.md](REQUIREMENTS.md) for the initial product requirements, [RE
 
 ## Signing and distribution
 
-The default ad-hoc signature is for local development; the bundle is not notarized. You can select a signing identity with `CODE_SIGN_IDENTITY="Developer ID Application: …" ./scripts/build-app.sh`, but public distribution still needs an appropriate signing/notarization workflow. Rebuilding an ad-hoc signed app can require re-granting Accessibility access. No login item is registered until explicitly enabled from the menu.
+The default signer is a self-signed **Altdock** certificate and exportable RSA-3072 private key in the login Keychain. It has ten-year validity, code-signing/digital-signature usage, and user-domain code-signing-only trust—not TLS or system-wide trust. There is no separate private-key or `.p12` backup. To create/reuse it on a Mac:
+
+```sh
+swift -suppress-warnings scripts/create-signing-identity.swift --create
+```
+
+Approve any native Keychain/trust prompt locally. The helper reuses an existing identity and refuses ambiguous/partial identities instead of silently rotating keys. It keeps newly generated key material in memory and imports it into Keychain; it never writes a private-key backup. You can later export the certificate and private key as an encrypted `.p12` through Keychain Access when moving Macs.
+
+Builds resolve this identity to its certificate fingerprint. The platform-generated designated requirement binds the app identifier to that certificate, so changing the binary does not change the signing identity. Switching from an old ad-hoc build to this certificate may require one final Accessibility approval; a new Mac still needs its own approval.
+
+`CODE_SIGN_IDENTITY` and `CODE_SIGN_KEYCHAIN` can select another identity/keychain. Explicit `CODE_SIGN_IDENTITY=-` permits ad-hoc signing for disposable builds and prints a warning; it is never an automatic fallback. The local certificate is not Apple-issued and the app is not notarized; public distribution requires a separate Developer ID/notarization workflow. Login-item registration remains explicit.
 
 ## API references
 

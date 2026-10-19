@@ -100,7 +100,7 @@ final class WindowReservationController: ObservableObject {
         let visible = screen.visibleFrame
         let quartzVisible = CGRect(x: visible.minX, y: primary.frame.maxY - visible.maxY, width: visible.width, height: visible.height)
         return ReservationRequest(
-            geometry: ReservationGeometry(display: CGDisplayBounds(screen.displayID), visible: quartzVisible, preferredIconSize: preferences.iconSize),
+            geometry: ReservationGeometry(display: CGDisplayBounds(screen.displayID), visible: quartzVisible, style: preferences.style),
             windows: model.currentSpaceWindows,
             frontmostProcessID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
             interactionGeneration: UInt64(CGEventSource.counterForEventType(.combinedSessionState, eventType: .leftMouseDown)) << 32

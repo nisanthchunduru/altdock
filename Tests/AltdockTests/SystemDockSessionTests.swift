@@ -1,3 +1,4 @@
+import AltdockCore
 import Foundation
 import Testing
 @testable import Altdock
@@ -10,20 +11,71 @@ struct SystemDockSessionTests {
         defer { fixture.clean() }
         let session = fixture.session()
         try session.begin { _ in }
-        #expect(fixture.preferences.current == .altdock)
+        #expect(fixture.preferences.current == SystemDockSettings.parked(replacing: fixture.original))
         try session.finish()
         #expect(fixture.preferences.current == fixture.original)
         #expect(!FileManager.default.fileExists(atPath: fixture.record.path))
     }
 
-    @Test("Settings that already match need no preference changes or Dock restart")
+    @Test("A recovered session that is already parked does not rewrite preferences")
     func alreadyConfigured() throws {
-        let fixture = try Fixture(original: .altdock)
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        var first: SystemDockSession? = fixture.session()
+        try first?.begin { _ in }
+        first = nil
+        let writes = fixture.preferences.writes.count
+        let session = fixture.session()
+        try session.begin { _ in }
+        #expect(fixture.preferences.writes.count == writes)
+        try session.finish()
+    }
+
+    @Test("Original edge is retained for Altdock and the system Dock is parked elsewhere", arguments: DockEdge.allCases)
+    func parksAwayFromOriginalEdge(_ edge: DockEdge) throws {
+        let fixture = try Fixture(original: SystemDockSettings(orientation: edge.rawValue, autoHide: false))
         defer { fixture.clean() }
         let session = fixture.session()
         try session.begin { _ in }
+        #expect(session.dockStyle?.edge == edge)
+        #expect(fixture.preferences.current.orientation == edge.parkedSystemEdge.rawValue)
+        #expect(fixture.preferences.current.autoHide == true)
         try session.finish()
-        #expect(fixture.preferences.writes.isEmpty)
+        #expect(fixture.preferences.current == fixture.original)
+    }
+
+    @Test("Appearance is captured before parking and survives a crash without being re-read from the parked Dock")
+    func preservesOriginalAppearance() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let expected = DockStyle(edge: .bottom, iconSize: 48, footprint: 74)
+        var owner: SystemDockSession? = SystemDockSession(directory: fixture.directory, preferences: fixture.preferences, appearanceProvider: { original in
+            #expect(fixture.preferences.current == original)
+            return expected
+        })
+        try owner?.begin { _ in }
+        owner = nil
+        let replacement = SystemDockSession(directory: fixture.directory, preferences: fixture.preferences, appearanceProvider: { _ in
+            Issue.record("A recovered session must not recapture the parked Dock's appearance")
+            return DockStyle(edge: .right)
+        })
+        try replacement.begin { _ in }
+        #expect(replacement.dockStyle == expected)
+        try replacement.finish()
+    }
+
+    @Test("Older recovery records without appearance still restore the original settings")
+    func legacyRecoveryRecord() throws {
+        let fixture = try Fixture(original: SystemDockSettings(orientation: "right", autoHide: false))
+        defer { fixture.clean() }
+        let legacy = "{\"token\":\"\(UUID().uuidString)\",\"original\":{\"orientation\":\"right\",\"autoHide\":false}}"
+        try Data(legacy.utf8).write(to: fixture.record)
+        let session = fixture.session()
+        try session.begin { _ in }
+        #expect(session.dockStyle?.edge == .right)
+        #expect(fixture.preferences.current.orientation == "bottom")
+        try session.finish()
+        #expect(fixture.preferences.current == fixture.original)
     }
 
     @Test("Previously absent keys are restored as absent, not guessed defaults")
@@ -86,7 +138,7 @@ struct SystemDockSessionTests {
         try second?.begin { newToken = $0 }
         second = nil
         try fixture.session().restoreAfterExit(token: #require(oldToken))
-        #expect(fixture.preferences.current == .altdock)
+        #expect(fixture.preferences.current == SystemDockSettings.parked(replacing: fixture.original))
         try fixture.session().restoreAfterExit(token: #require(newToken))
         #expect(fixture.preferences.current == fixture.original)
     }
@@ -141,7 +193,11 @@ private final class Fixture {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    func session() -> SystemDockSession { SystemDockSession(directory: directory, preferences: preferences) }
+    func session() -> SystemDockSession {
+        SystemDockSession(directory: directory, preferences: preferences, appearanceProvider: {
+            DockStyle(edge: DockEdge(rawValue: $0.orientation ?? "bottom") ?? .bottom)
+        })
+    }
     func clean() { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
 }
 

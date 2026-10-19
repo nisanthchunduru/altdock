@@ -56,7 +56,7 @@ final class NativeDockSurface: DockSurface {
     }
 
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout) {
-        presentation.update(applications: applications, isUpdating: isUpdating, iconSize: layout.iconSize)
+        presentation.update(applications: applications, isUpdating: isUpdating, style: layout.style)
         if panel.frame != layout.frame {
             panel.setFrame(layout.frame, display: true)
             panel.contentView?.layoutSubtreeIfNeeded()

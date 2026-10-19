@@ -100,8 +100,8 @@ actor ReservationEngine {
             for: id, frame: frame, geometry: request.geometry, now: now,
             interaction: request.frontmostProcessID == id.processID ? request.interactionGeneration : nil
         ) else {
-            if frame.maxY <= request.geometry.bottomLimit + 2 { return result("Already above the reserved strip") }
-            return result(ledger.blockReason(for: id, now: now) ?? "Not a bottom-tiled/maximized window, or adjustment is settling")
+            if request.geometry.isClear(frame) { return result("Already clear of the reserved strip") }
+            return result(ledger.blockReason(for: id, now: now) ?? "Not an edge-tiled/maximized window, or adjustment is settling")
         }
         if accessibility.write(proposed, to: element, expecting: frame) {
             ledger.didApply(proposed, to: id, original: frame, now: ProcessInfo.processInfo.systemUptime)

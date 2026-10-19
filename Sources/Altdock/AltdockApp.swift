@@ -1,3 +1,4 @@
+import AltdockCore
 import AppKit
 
 @main
@@ -71,7 +72,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let preferences = DockPreferences()
+        let preferences = DockPreferences(style: systemDock.dockStyle ?? DockStyle())
         let model = DockModel(preferences: preferences, windowTracker: windowTracker)
         self.model = model
         model.start()

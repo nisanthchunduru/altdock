@@ -40,14 +40,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem(title: reservation.status, action: nil, keyEquivalent: ""))
         }
 
-        let sizes = NSMenu()
-        for (title, size) in [("Small", 40), ("Medium", 52), ("Large", 64)] {
-            let item = addItem(title, action: #selector(setIconSize(_:)), checked: preferences.iconSize == Double(size), to: sizes)
-            item.tag = size
-        }
-        let sizeItem = NSMenuItem(title: "Icon Size", action: nil, keyEquivalent: "")
-        sizeItem.submenu = sizes
-        menu.addItem(sizeItem)
+        menu.addItem(NSMenuItem(title: "Native Dock: \(preferences.style.edge.rawValue), \(Int(preferences.iconSize))-point icons", action: nil, keyEquivalent: ""))
 
         let displays = NSMenu()
         for screen in NSScreen.screens {
@@ -94,10 +87,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         if preferences.reserveSpace && !AXIsProcessTrusted() { openAccessibility() }
     }
 
-    @objc private func setIconSize(_ sender: NSMenuItem) {
-        preferences.iconSize = Double(sender.tag)
-    }
-
     @objc private func setDisplay(_ sender: NSMenuItem) {
         guard let displayID = sender.representedObject as? CGDirectDisplayID else { return }
         preferences.displayID = displayID
@@ -133,7 +122,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc func showAbout() {
         let alert = NSAlert()
         alert.messageText = "Altdock"
-        alert.informativeText = "Your Space. Your apps. Less noise.\n\nAltdock caches window membership across Spaces using private SkyLight APIs, with an on-screen fallback. Click to switch; right-click for Open, Hide, and Quit.\n\nReserve Space is on by default. Grant Accessibility to let Altdock shorten maximized/tiled windows above the dock. Floating and full-screen windows are left alone. Reservation pauses when Altdock is hidden or auto-hide is on.\n\nWhile Altdock runs, the system Dock is moved to the right with auto-hide enabled. Its original position and auto-hide setting are restored on exit; a recovery helper also handles crashes."
+        alert.informativeText = "Your Space. Your apps. Less noise.\n\nAltdock uses the native Dock’s original edge, base icon size, and thickness. Its length follows the apps in each Space. Click to switch; right-click for Open, Hide, and Quit.\n\nReserve Space is on by default. Grant Accessibility to keep maximized/tiled windows clear of the dock. Floating and full-screen windows are left alone.\n\nThe system Dock is parked on the right, or at the bottom if it originally occupied the right edge, with auto-hide enabled. Its original position and auto-hide setting are restored on exit; a recovery helper also handles crashes."
         alert.addButton(withTitle: "Got It")
         alert.runModal()
     }

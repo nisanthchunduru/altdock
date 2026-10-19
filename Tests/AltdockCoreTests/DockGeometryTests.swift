@@ -4,25 +4,53 @@ import Testing
 
 @Suite("Dock layout")
 struct DockGeometryTests {
-    @Test("Uses the preferred icon size when applications fit")
-    func usesPreferredIconSize() {
-        #expect(DockGeometry.iconSize(preferred: 52, applicationCount: 5, availableWidth: 1400) == 52)
+    @Test("Reveal and travel regions follow the selected physical screen edge", arguments: DockEdge.allCases)
+    func edgeRevealZones(_ edge: DockEdge) {
+        let screen = CGRect(x: -1440, y: -900, width: 1440, height: 900)
+        let style = DockStyle(edge: edge)
+        let panel = DockGeometry.frame(contentSize: DockGeometry.contentSize(applicationCount: 3, style: style), visibleFrame: screen, screenFrame: screen, edge: edge)
+        let point: CGPoint
+        switch edge {
+        case .bottom: point = CGPoint(x: panel.midX, y: screen.minY + 1)
+        case .left: point = CGPoint(x: screen.minX + 1, y: panel.midY)
+        case .right: point = CGPoint(x: screen.maxX - 1, y: panel.midY)
+        }
+        #expect(DockGeometry.revealZone(panel: panel, screen: screen, edge: edge).contains(point))
+        #expect(DockGeometry.travelZone(panel: panel, screen: screen, edge: edge).contains(point))
+        #expect(DockGeometry.travelZone(panel: panel, screen: screen, edge: edge).contains(CGPoint(x: panel.midX, y: panel.midY)))
     }
 
-    @Test("Shrinks icons when the dock would overflow")
-    func shrinksIconsToFit() {
-        let size = DockGeometry.iconSize(preferred: 64, applicationCount: 20, availableWidth: 1000)
-        #expect(abs(size - 36.8) < 0.01)
+    @Test("The native 64-point icon baseline occupies a 90-point edge footprint")
+    func nativeBaseline() {
+        let style = DockStyle()
+        #expect(style.iconSize == 64)
+        #expect(style.footprint == 90)
+        #expect(style.panelThickness == 82)
     }
 
-    @Test("Keeps icons usable for scrolling when there are many applications")
-    func preservesMinimumIconSize() {
-        #expect(DockGeometry.iconSize(preferred: 52, applicationCount: 100, availableWidth: 1000) == 24)
+    @Test("Native icons do not shrink when the dock overflows; the viewport scrolls")
+    func preservesNativeIcons() {
+        let style = DockStyle(iconSize: 64)
+        let content = DockGeometry.contentSize(applicationCount: 100, style: style)
+        let frame = DockGeometry.frame(contentSize: content, visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875), screenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900))
+        #expect(style.iconSize == 64)
+        #expect(content.width > frame.width)
+        #expect(frame.width == 1416)
     }
 
-    @Test("An empty Space uses the preferred height")
-    func sizesEmptyDock() {
-        #expect(DockGeometry.iconSize(preferred: 52, applicationCount: 0, availableWidth: 1000) == 52)
+    @Test("Vertical docks keep native thickness and clamp only their scrollable length", arguments: [DockEdge.left, .right])
+    func verticalDock(_ edge: DockEdge) {
+        let style = DockStyle(edge: edge)
+        let content = DockGeometry.contentSize(applicationCount: 100, style: style)
+        let frame = DockGeometry.frame(contentSize: content, visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875), screenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900), edge: edge)
+        #expect(frame.width == 82)
+        #expect(frame.height == 851)
+        #expect(frame.minX == (edge == .left ? 8 : 1350))
+    }
+
+    @Test("Empty side docks use a compact icon-sized placeholder")
+    func emptySideDock() {
+        #expect(DockGeometry.contentSize(applicationCount: 0, style: DockStyle(edge: .left)) == CGSize(width: 82, height: 88))
     }
 
     @Test("Uses the display bottom instead of the hidden system Dock's old reserved area")

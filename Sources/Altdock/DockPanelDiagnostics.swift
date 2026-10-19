@@ -1,3 +1,4 @@
+import AltdockCore
 import Foundation
 
 struct DockPanelReport: Codable, Equatable {
@@ -11,6 +12,7 @@ struct DockPanelReport: Codable, Equatable {
     let displayID: UInt32?
     let activeSpaceID: UInt64?
     let mode: String
+    let style: DockStyle
     let panels: [Panel]
 }
 

@@ -48,6 +48,12 @@ final class ReservationAccessibility {
     func write(_ target: CGRect, to window: AXUIElement, expecting original: CGRect) -> Bool {
         writeError = rejection(window)
         guard writeError == nil else { return false }
+        if abs(target.minX - original.minX) > 2 || abs(target.minY - original.minY) > 2 {
+            guard case .value(true) = settable(window, kAXPositionAttribute) else {
+                writeError = "This edge adjustment needs writable AXPosition"
+                return false
+            }
+        }
         return ReservationFrameTransaction.apply(
             from: original, to: target, read: { self.frame(window) },
             write: { self.setFrame($0, on: window) },

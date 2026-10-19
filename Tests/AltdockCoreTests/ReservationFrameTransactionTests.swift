@@ -7,6 +7,38 @@ struct ReservationFrameTransactionTests {
     private let original = CGRect(x: 0, y: 25, width: 1000, height: 875)
     private let target = CGRect(x: 0, y: 25, width: 1000, height: 782)
 
+    @Test("Left-edge resizing verifies and restores both horizontal position and width")
+    func horizontalResizeAndRestore() {
+        var current = original
+        let sideTarget = CGRect(x: 94, y: 25, width: 906, height: 875)
+        let adjusted = ReservationFrameTransaction.apply(from: original, to: sideTarget, read: { current }) {
+            current = $0
+            return true
+        }
+        #expect(adjusted)
+        let restored = ReservationFrameTransaction.apply(from: sideTarget, to: original, read: { current }) {
+            current = $0
+            return true
+        }
+        #expect(restored)
+        #expect(current == original)
+    }
+
+    @Test("A failed horizontal adjustment rolls back only its own stable intermediate frame")
+    func partialHorizontalRollback() {
+        var current = original
+        let sideTarget = CGRect(x: 94, y: 25, width: 906, height: 875)
+        var writes: [CGRect] = []
+        let result = ReservationFrameTransaction.apply(from: original, to: sideTarget, read: { current }) {
+            writes.append($0)
+            current = $0 == sideTarget ? CGRect(x: 0, y: 25, width: 906, height: 875) : $0
+            return true
+        }
+        #expect(!result)
+        #expect(current == original)
+        #expect(writes == [sideTarget, original])
+    }
+
     @Test("An intervening frame change prevents the write")
     func staleRead() {
         var writes = 0

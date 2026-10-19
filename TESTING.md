@@ -18,6 +18,13 @@ These are deterministic unit tests, not proof of macOS Space reporting or permis
 
 The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app now changes the system Dock's position/auto-hide and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
 
+## Signing checks
+
+- [ ] `security find-identity -v -p codesigning` lists one valid `Altdock` identity in the login Keychain. Confirm the private key is exportable and user trust is code-signing-only.
+- [ ] Sign two temporary app copies with different contents: CDHashes differ but `codesign -d -r-` reports the same app-identifier + certificate-leaf requirement. Both pass strict verification. Never use these test copies to modify TCC or the native Dock.
+- [ ] A missing/ambiguous default identity makes `build-app.sh` fail before compilation instead of silently signing ad hoc.
+- [ ] Switching once from ad-hoc to certificate signing may require Accessibility reapproval. Subsequent builds with the same identity/path should retain it.
+
 ## Manual acceptance checklist
 
 ### Current Space
@@ -37,7 +44,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 - [ ] Run `--panel-status`: one distinct native window ID for each Space on the selected display, with no shared fallback in the normal working case. `ordered: true` on an inactive panel means it remains ordered in that Space, not that it is visible on the current desktop.
 - [ ] Swipe/keyboard-switch between Spaces with different icon counts. Each dock should travel with its workspace rather than one stationary dock changing width. Repeat and cancel an interactive swipe midway.
-- [ ] Start with the system Dock visible at the bottom, then launch Altdock. Every panel must sit 8 points above its display's physical bottom, even if `NSScreen.visibleFrame` still reports the old bottom strip. Repeat with Small/Medium/Large icons, a negatively positioned monitor, and `--shared-panel`.
+- [ ] For original native Dock edges bottom/left/right, compare its base icon size and footprint to Altdock after launch. Every panel sits 8 points inside that original edge. Use native Dock size changes while Altdock is quit; there are no Altdock size presets. Repeat with a negatively positioned monitor and `--shared-panel`.
 - [ ] Compare `--panel-status` before/after a switch: window IDs, ownership, and per-Space frames remain stable; only the active Space changes unless app membership changed.
 - [ ] Open/close an app window on a Space, then leave and return: its existing panel updates correctly. Empty Spaces have their own stable empty-state panels.
 - [ ] Create/delete/reorder Spaces in Mission Control: panels are added/closed without ghosts, duplicate bars, or unintended desktop switching.
@@ -65,23 +72,23 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 - [ ] Launch with no saved `reserveSpace` preference: the menu is checked without user opt-in. Startup never prompts for Accessibility. Missing access leaves the dock usable and shows a clear permission-needed item. An explicit permission request must not prompt if the live grant is already present.
 - [ ] Run `--reservation-status`: verify the report comes from the running app's PID/path, not the diagnostic CLI. If a checked Settings entry is stale after rebuilding, the app reports missing permission instead of pretending it can resize windows.
-- [ ] Grant permission: maximize a normal window. Its bottom edge clears Altdock while its top, left, and width remain unchanged. Repeat more than twice, including animated zooms; later user maximizations must still be adjusted.
+- [ ] Grant permission and maximize a normal window. Bottom docks preserve top/left/width, right docks preserve left/top/height, and left docks preserve right/top/height while leaving the gap. Repeat more than twice, including animated zooms.
 - [ ] Test a window without the optional `AXFullScreen` attribute and a size-resizable window with read-only position. Neither should be rejected solely for that missing capability.
 - [ ] Cause one delayed/failed AX resize: verify bounded retry rather than permanent suppression. Inspect the diagnostic for the reason.
 - [ ] Verify reservation leaves space only for Altdock, not Altdock plus the old system Dock strip. Test maximized windows aligned with either the old reported work-area bottom or the full display bottom; do not expand windows that already clear the dock.
-- [ ] Test left/right halves and bottom quarters, including macOS's tile margins. Ordinary floating windows and top-only tiles are untouched.
+- [ ] Test left/right halves and quarters touching the captured edge, including native tile margins. Ordinary floating windows and tiles away from that edge are untouched.
 - [ ] Test dialogs, full-screen windows, minimized windows, and fixed/minimum-size apps. Unsupported writes must not repeatedly shrink or oscillate windows.
 - [ ] Switch between Spaces with many/few apps: reserved height remains stable despite icon shrinking or an empty Space.
 - [ ] Move/resize a managed window manually: Altdock does not restore a stale original frame over that placement.
 - [ ] Run a competing tiling manager: after a bounded retry Altdock yields instead of continually fighting its layout.
 - [ ] Disable Reserve Space, hide Altdock, or enable auto-hide: only unchanged Altdock-adjusted windows are restored. Auto-hide edge reveals do not resize windows.
-- [ ] Change icon size/display and disconnect a monitor. Verify correct coordinates and guarded restoration.
+- [ ] Change the native icon size while Altdock is quit, relaunch, switch displays, and disconnect a monitor. Verify sizing, edge coordinates, and guarded restoration.
 - [ ] Revoke Accessibility while running: stop adjusting windows without crashes; restore permission and verify recovery.
 
 ### System Dock borrowing and restoration
 
-- [ ] Record the original Dock position and auto-hide setting. Launch Altdock: position becomes right and auto-hide becomes enabled. No size, magnification, pinned-icon, or delay preference changes.
-- [ ] Start with right/auto-hide already enabled: no unnecessary Dock restart or rewrite.
+- [ ] Record original native Dock position, auto-hide, and icon size. With an original bottom/left Dock, Altdock uses that edge and parks the native Dock on the right. With an original right Dock, Altdock stays right and parks the native Dock at the bottom. Auto-hide is enabled; no native size/magnification/icon/delay preferences change.
+- [ ] Recover a crashed session whose native Dock is already parked: no unnecessary rewrite/restart, no recapture of the parked edge as Altdock's new original.
 - [ ] Quit normally: both original values return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
 - [ ] Force-quit only the main Altdock process: the helper restores both settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
 - [ ] For a controlled recovery test, terminate both processes, then relaunch and quit Altdock: restore the original pre-session settings, not the temporary right/auto-hide values.
@@ -91,12 +98,14 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 ### Presentation and settings
 
-- [ ] Change icon size; enable and disable automatic hiding; hide and show Altdock from its status menu.
-- [ ] With auto-hide enabled, reveal at the bottom edge, move to an icon, and open a context menu. The dock stays available during interaction and hides after leaving.
-- [ ] Check both light/dark appearance and Reduce Motion/Reduce Transparency. Hover enlarges icons without clipping them; names appear on hover.
+- [ ] Check icon centering at bottom/left/right: the image box has equal cross-axis margins, independent of the running indicator and active-app state. With native 64-point icons and an 82-point panel, both margins are nine points. Test at 1x and Retina scaling; app artwork with asymmetric transparent padding can appear optically offset even when its image box is centered.
+
+- [ ] Enable/disable auto-hide and hide/show Altdock. Verify horizontal layout at the bottom and vertical layout at the sides.
+- [ ] Reveal from the captured bottom/left/right edge, move to an icon, and open a context menu. The dock stays available during interaction and hides after leaving.
+- [ ] Check light/dark appearance and Reduce Transparency. Hover shows names/feedback without changing icon dimensions or requiring extra permanent headroom.
 - [ ] Open enough apps to overflow the display. Every icon remains reachable by horizontal scrolling.
 - [ ] Use VoiceOver to identify the dock, app names, and active status.
-- [ ] Restart Altdock: icon size, display selection, and auto-hide persist.
+- [ ] Restart Altdock: display/auto-hide preferences persist, while native appearance is captured afresh after a normal quit. A crash recovery reuses its original appearance snapshot.
 - [ ] Confirm only the two intended system Dock preferences change while Altdock runs and both are restored on quit.
 
 ### Displays, full screen, and lifecycle

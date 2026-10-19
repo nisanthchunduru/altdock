@@ -1,10 +1,14 @@
+import AltdockCore
 import Foundation
 
 struct SystemDockSettings: Codable, Equatable {
     let orientation: String?
     let autoHide: Bool?
 
-    static let altdock = SystemDockSettings(orientation: "right", autoHide: true)
+    static func parked(replacing original: SystemDockSettings) -> SystemDockSettings {
+        let edge = DockEdge(rawValue: original.orientation ?? "bottom") ?? .bottom
+        return SystemDockSettings(orientation: edge.parkedSystemEdge.rawValue, autoHide: true)
+    }
 }
 
 protocol SystemDockPreferenceAccess {

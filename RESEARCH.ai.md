@@ -5,7 +5,7 @@
 - Show apps belonging to the selected display's current Space; retain a macOS Dock-like interface.
 - Cache all-Spaces window membership rather than emptying the dock during Space transitions.
 - Reserve room for Altdock **by default**, using Accessibility-based avoidance for maximized/tiled windows. Permission must still be granted through macOS; it cannot be silently enabled.
-- On launch, save the system Dock's position and auto-hide setting, then move it to the right and enable auto-hide only where necessary. Restore those two settings on exit. Do not modify icons, size, magnification, delays, or other Dock preferences.
+- Capture the system Dock's original edge, base icon size and thickness before parking it. Altdock uses that edge and size, with per-Space length. Bottom/left originals park the system Dock on the right; right originals park it at the bottom. Enable auto-hide, restore original position/auto-hide on exit, and never modify native size/magnification/icons/delays.
 - Screen-space avoidance is not a WindowServer-wide reservation. Do not promise that every app or manually placed window will comply.
 
 ## Source review
@@ -137,6 +137,36 @@ The corrected rule anchors panels at `screenFrame.minY + DockGeometry.bottomMarg
 Eligibility accepts bottom-aligned windows ending at either the reported work-area bottom or the physical display bottom, since apps can use either after the Dock is hidden. The implementation only shortens overlapping windows; it does not expand windows that already clear Altdock. Regression tests cover stale insets, negative monitor coordinates, horizontal insets, every configured icon size, both alignment conventions, and both per-Space/shared panels.
 
 A native probe using the actual geometry and own-window placement code confirmed that WindowServer honored y=8 for icon sizes 24/40/52/64 while `visibleFrame.minY` was still 90. The rebuilt running app's three panels were independently checked through `CGWindowListCopyWindowInfo` and all had an 8-point physical bottom margin. No `constrainFrameRect` override, global work-area mutation, desktop switch, or security-setting change was needed.
+
+## Stable local signing identity
+
+User-approved identity name: **Altdock**, stored only in the login Keychain, with an exportable RSA-3072 private key. Certificate subject/issuer CN=Altdock, random serial, SHA-256/RSA signature, ten-year validity, critical CA:FALSE, digitalSignature, and codeSigning EKU. No personal name, email, organization, or address was included; no private-key/.p12 backup files were created.
+
+Certificate SHA-1: `C11E34AF0F57148CE73A8B5171AC439D35931641`; SHA-256: `48B3C40D11ABA0971543BBA2D172CF335AA0C52FC4A670711240D532B0C173F2`. User trust contains only the code-signing policy (OID `1.2.840.113635.100.1.16`), with no admin-domain trust entry. Import granted automatic key use to `/usr/bin/codesign`, not all apps. Exportability was checked through Security.framework attributes.
+
+`scripts/create-signing-identity.swift --create` reuses an existing identity rather than rotating it. Generation uses OpenSSL with private material passed through in-memory pipes into Security.framework import. Only a non-secret OpenSSL configuration is written temporarily. Native macOS approval may be needed for Keychain/trust changes; never handle user passwords in chat. Trust approval initially waited for user interaction, then completed; no alternative trust domain/security bypass was used.
+
+`build-app.sh` now resolves the unique valid Altdock identity in the login Keychain to its fingerprint and fails closed if missing/ambiguous. `CODE_SIGN_IDENTITY`/`CODE_SIGN_KEYCHAIN` allow explicit overrides; ad-hoc signing requires explicit `CODE_SIGN_IDENTITY=-`. No custom/loosened designated requirement is supplied.
+
+Two temporary app copies with different Info.plist contents were signed and strictly verified. Their CDHashes differed, while both default requirements were `identifier "dev.altdock.Altdock" and certificate leaf = H"c11e34af0f57148ce73a8b5171ac439d35931641"`. This establishes stable code identity, not automatic migration of an old TCC grant; moving from ad-hoc signing or to a new Mac still needs user approval. This is local development signing, not Developer ID/notarization.
+
+## Native size and edge matching
+
+The native Dock was restored briefly by quitting the existing Altdock binary, then measured through read-only CoreDock queries. With magnification disabled and no explicit native `tilesize` preference, its normalized tile size was `0.42857143`, mapping to 64 points on the 16–128 range, and its bottom footprint was 90 points. The old Altdock used 64 + 29 = 93 points of panel height plus an 8-point margin: 101 total, eleven more than the native footprint. Its 14-point top padding existed to accommodate always-on custom hover magnification.
+
+The new `DockStyle` carries original edge, base icon size and edge footprint. Native metrics are captured **before** parking; the recovery record also preserves them across crashes, preventing the temporary parked edge from becoming Altdock's next original. Older records without appearance remain readable. Normal quit removes the record and the next launch captures the current native settings afresh.
+
+For the measured native style, Altdock uses an 82-point panel plus the 8-point edge margin, with 64-point icons and 18 points of cross-axis space. Icons are now centered with nine points on each side; the indicator is independently positioned toward the screen edge rather than participating in the icon's stack layout. It no longer enlarges icons on hover or shrinks them for overflow; it scrolls along its horizontal/vertical axis. The panel length follows each Space's apps rather than copying empty space from the native Dock's full icon list. Magnification animation and every private visual detail are not cloned.
+
+`NativeDockAppearance` reads CoreDock tile size/orientation/rectangle and falls back to `tilesize` or 64-point icons. Hidden/magnified/unavailable native rectangles use a calibrated footprint of icon size + 26. References: [CoreDock getter declarations](https://gist.github.com/w0lfschild/90db263867f469738c01e9e2d937f874) and [Apple's documented 16–128 tilesize range](https://github.com/apple/device-management/blob/release/mdm/profiles/com.apple.dock.yaml).
+
+Layout, indicators, auto-hide zones, and reservation use the captured bottom/left/right edge. Left reservation changes x/width while retaining the right edge; right changes width; bottom changes height. Frame verification/rollback supports both axes and preflights writable position when a shift is needed. Native size/magnification preferences are never overwritten. Cross-edge and crash-recovery behavior is covered by deterministic tests; real side-dock/macOS variations still need acceptance testing.
+
+## Icon centering
+
+`DockIconLayout` gives every icon a cell spanning the panel thickness, with its image rectangle centered in that cell. The indicator's center is the midpoint between the icon's screen-facing boundary and the panel boundary; its thickness is subtracted symmetrically. For a 64-point icon in an 82-point panel, the nine-point gap contains a four-point indicator with 2.5-point clearance on both sides. This rule applies to bottom, left, and right panels and to active/inactive indicators. `DockIconContent` positions the image and running indicator independently in a fixed-size ZStack. Scroll content applies padding only along the scrolling axis. The old asymmetric padding and icon-plus-indicator stack centered the combined group, not the icon itself.
+
+Pure tests cover all edges, native icon sizes 16–128, active/inactive indicators, and varied footprints. Pixel-based SwiftUI ImageRenderer tests use a synthetic solid sRGB icon for bottom/left/right at 1x and 2x scales. An initial fixture used DeviceRGB, which color-managed red into orange on this machine and broke red-pixel detection; explicitly using sRGB for both generation and read-back fixed the test, not the layout. No user screenshot is necessary for these deterministic checks. Artwork inside an app-supplied icon may itself have asymmetric transparent padding; the icon's image box, not its visual center of mass, is centered.
 
 ## Verification priorities
 
