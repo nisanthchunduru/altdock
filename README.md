@@ -13,7 +13,7 @@ Requires macOS 13+ and a Swift 6+ toolchain (Xcode or Command Line Tools). No th
 open dist/Altdock.app
 ```
 
-The script creates a release `.app` bundle with an icon and an ad-hoc signature. For everyday use, copy `dist/Altdock.app` to `/Applications` and launch that copy. Enable **Launch at Login** from Altdock’s menu only after putting it in its permanent location.
+The script creates a release `.app` bundle with an icon and an ad-hoc signature. **Quit Altdock before rebuilding or replacing its bundle.** For everyday use, copy `dist/Altdock.app` to `/Applications` and launch that copy. Enable **Launch at Login** from Altdock’s menu only after putting it in its permanent location.
 
 For development:
 
@@ -34,12 +34,46 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 - **Click** an icon to activate the app. Hover to magnify it and see its name.
 - **Right-click** for Open, Hide, or Quit. Quit uses the app’s normal termination flow, not force-quit.
 - The dot beneath each icon indicates a running app; the wider indicator marks the frontmost app.
-- The **menu-bar icon** controls dock visibility, automatic hiding, icon size, display selection, and launch at login.
+- The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, icon size, display selection, and launch at login.
 - With **Automatically Hide** enabled, move the pointer to the bottom edge beneath the dock to reveal it.
 - Icons shrink to accommodate more apps; horizontal scrolling handles overflow.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
 
-Altdock does **not** hide, replace, restart, or modify Apple’s Dock. It sits above the system Dock when that Dock reserves screen space. For a cleaner setup, manually enable **System Settings → Desktop & Dock → Automatically hide and show the Dock**. Both docks can respond to the same bottom edge; moving the system Dock to the left or right avoids that conflict.
+## Space reservation — on by default
+
+Grant **Accessibility** through Altdock's menu if its status says access is missing. Startup only checks permission; it never automatically prompts. Explicit requests re-check the live grant and do nothing when permission is already granted. Altdock automatically shortens maximized and bottom-tiled windows to leave room above its dock, preserving their top, left, and width. Reserve Space is already on, including for existing installations without a saved preference.
+
+- This is Accessibility-based window adjustment, **not** a system-wide change to `NSScreen.visibleFrame`. Floating windows, dialogs, full-screen/minimized windows, non-resizable windows, and windows whose identity or attributes cannot be read safely are left alone.
+- Clearance is based on the configured icon size, not app count or hover magnification. Switching Spaces does not continuously resize app windows as icons change.
+- AX events are coalesced for 150 ms, with three-second reconciliation for missed events. Window reads, observer registration, and writes run off the UI thread. App/window attribute access uses a 250 ms messaging timeout. An unsupported optional `AXFullScreen` flag does not disqualify a normal window; a failed read is still retried safely. Writable position is required only if the size change actually displaces the window.
+- Resize verification allows up to eight observations, separated by 60 ms, for asynchronous window animations. Transient write failures receive bounded retries rather than permanent suppression after one attempt.
+- The engine suppresses its own notifications and yields after repeated competing writes. A later user interaction followed by a new maximize/tile geometry change starts a fresh adjustment rather than exhausting a lifetime retry count. It reads only aggregate mouse/key event counts—not keystrokes or event contents—to distinguish new interaction from its own writes.
+- Reservation pauses when **Automatically Hide** is on or Altdock is hidden. It does not resize windows on every edge reveal.
+- On normal quit, hiding, disabling reservation, or changing display/clearance, Altdock attempts to restore only windows that still match its last adjustment. It never blindly restores windows the user has since moved. Window-frame restoration after force quit is not guaranteed.
+
+## Diagnosing reservation and permission problems
+
+While Altdock is running:
+
+```sh
+dist/Altdock.app/Contents/MacOS/Altdock --reservation-status
+```
+
+This reads `~/Library/Application Support/Altdock/reservation-status.json`, written by the **running app**, not the terminal's Accessibility identity. It includes the executable path/PID, last changed report timestamp, AX errors, window IDs/geometry, and adjustment or rejection reasons. It contains no window titles or content. The menu's **Reservation Diagnostics…** item reveals the file. Reports are updated when their contents change; a bounded scan may report only part of the current window list. This diagnostic does not change Dock preferences or request access.
+
+A checked Altdock entry in System Settings can become stale after replacing an ad-hoc signed binary. If the running app reports missing access, remove and re-add the exact `.app` you are running under **Privacy & Security → Accessibility**, then enable it. Altdock polls for the grant without prompting; if macOS still reports it missing after updating the entry, quit and relaunch Altdock. Use a stable code-signing identity for development if you want grants to survive rebuilds reliably. Altdock does not reset TCC, alter security settings, or claim that a stored preference is equivalent to a live OS grant.
+
+If access is granted but a particular app's `AXWindows` query fails, that app may need restarting; do not assume the checked Accessibility setting guarantees that every app exposes usable window information.
+
+## Transitioning to and from the system Dock
+
+On launch, Altdock saves the system Dock's exact **position** and **Automatically hide and show** setting, then moves it to the **right** and enables **auto-hide**, changing only settings that need it. No magnification, icon, size, animation, or delay preferences are changed. The system Dock is restarted when these values change, which may cause a brief visual transition.
+
+On quit, those two saved settings are restored, including removing keys that were originally absent. A lightweight helper process also restores them if the main Altdock process crashes or is force-quit. A session lock prevents a second instance from overwriting the original snapshot; a token prevents an old helper from restoring a newer session's settings.
+
+The recovery record lives at `~/Library/Application Support/Altdock/system-dock.json`. If both the app and its helper are killed, or the Mac loses power, the next launch reuses that original record and restores it on exit. Do not delete the record while restoration is pending. A corrupt record causes startup to fail without replacing it. A valid record is removed only after restoration succeeds. No permanent recovery LaunchAgent is installed. Changes to these same two settings made manually while Altdock runs will also be replaced by the saved pre-launch values on exit.
+
+The `--list-current-space` and `--list-spaces` diagnostics do not change Dock preferences or prompt for Accessibility.
 
 ## Space semantics and permissions
 
@@ -52,7 +86,7 @@ Altdock dynamically loads **private SkyLight APIs**: `SLSCopySpacesForWindows` m
 - A 0.75-second timer and app lifecycle notifications reconcile the all-Spaces cache. A Space-change notification selects cached membership immediately, then schedules reconciliation. Existing icons are not cleared first, and their ordering is retained per Space. A newly created/unknown Space keeps the previous icons non-interactive until a snapshot is available; a known empty Space displays the empty state immediately. Caches can briefly lag window moves or closes until reconciliation.
 - Public fallback transitions preserve the previous, non-interactive dock during a 0.4-second grace period, with short retries, rather than showing a misleading empty state. Full scans currently run on the main thread; large window counts may increase refresh cost.
 - **Screen Recording is not requested.** Filtering uses process IDs, window geometry, and Space IDs—not protected window titles or images.
-- **Accessibility is optional.** “Enable Precise Window Switching…” opens the permission settings. When granted, Altdock uses `_AXUIElementGetWindow` when available to match an accessible window by ID, unminimizes it, and raises it before activating the app. Geometry matching is a fallback if that symbol is unavailable. Without a usable accessible window, macOS chooses which window to activate and may switch Spaces; restoration of a particular minimized window is not guaranteed without Accessibility. Hidden apps are unhidden on activation. Clicks re-query membership to avoid acting on stale icons.
+- **Accessibility is required for space reservation and precise window control**, but the basic dock still works without it. “Grant Accessibility Access…” opens the permission settings. When granted, Altdock uses `_AXUIElementGetWindow` when available to match an accessible window by ID, unminimizes it, and raises it before activating the app. Activation can fall back to geometry matching; reservation does not resize geometrically ambiguous windows if exact identity is unavailable. Without a usable accessible window, macOS chooses which window to activate and may switch Spaces; restoration of a particular minimized window is not guaranteed without Accessibility. Hidden apps are unhidden on activation. Clicks re-query membership to avoid acting on stale icons.
 - The panel is configured to accompany full-screen Spaces, but macOS can suppress auxiliary panels in some full-screen apps. Full-screen, Stage Manager, and multi-monitor behavior should be verified on your setup.
 
 ## Project layout
@@ -65,7 +99,7 @@ Resources/Info.plist  Menu-bar app bundle metadata
 scripts/              Build, icon generation, and test commands
 ```
 
-See [PRODUCT.md](PRODUCT.md) for the product requirements and [TESTING.md](TESTING.md) for the manual acceptance checklist.
+See [PRODUCT.md](PRODUCT.md) for the initial product requirements, [RESEARCH.ai.md](RESEARCH.ai.md) for the source review and engineering decisions, and [TESTING.md](TESTING.md) for the manual acceptance checklist.
 
 ## Signing and distribution
 

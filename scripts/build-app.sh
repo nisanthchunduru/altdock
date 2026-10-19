@@ -3,9 +3,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+APP="$ROOT/dist/Altdock.app"
+if pgrep -f "^$APP/Contents/MacOS/Altdock( |$)" >/dev/null; then
+    printf 'Quit Altdock and wait for its recovery helper to exit before rebuilding.\n' >&2
+    exit 1
+fi
 swift build -c release "$@"
 BIN_DIR="$(swift build -c release --show-bin-path "$@")"
-APP="$ROOT/dist/Altdock.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Altdock" "$APP/Contents/MacOS/Altdock"
 cp Resources/Info.plist "$APP/Contents/Info.plist"

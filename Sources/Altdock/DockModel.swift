@@ -15,6 +15,12 @@ final class DockModel: ObservableObject {
     @Published private(set) var isSwitchingSpace = true
 
     var trackingDescription: String { windowTracker.backendDescription }
+    var currentSpaceWindows: [SpaceWindow] {
+        guard !isSwitchingSpace, let bounds = displayBounds() else { return [] }
+        return windowTracker.selection(
+            on: bounds, regularProcessIDs: Set(runningApplications().map(\.processIdentifier))
+        )?.windows ?? []
+    }
 
     private let displayBounds: () -> CGRect?
     private let windowTracker: any SpaceWindowTracking

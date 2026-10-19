@@ -14,7 +14,9 @@ dist/Altdock.app/Contents/MacOS/Altdock --public-windows --list-spaces
 
 The core suites cover current-display filtering, off-screen exclusion in the public fallback, all-Spaces indexing (including shared and unvisited Spaces), window eligibility, deduplication, stable ordering, empty/unknown Spaces, negative display coordinates, and dock geometry. Native model tests use a fake tracker and clock to verify synchronous cached switches, absence of artificial empty publications, unknown-Space interaction blocking, rapid switches, and fallback settling. Dynamic loader tests cover missing frameworks and symbols.
 
-These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed.
+These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. Reservation tests cover tiled/floating/foreign-display geometry, negative coordinates, stable clearance, feedback suppression, retry limits, guarded restoration, partial-write rollback, and default-enabled preferences. System Dock tests use fake preference stores and isolated recovery directories; they cover normal exit, crash/relaunch, duplicate instances, missing keys, corrupt records, stale helpers, and restoration failures without changing the real Dock.
+
+The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app now changes the system Dock's position/auto-hide and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
 
 ## Manual acceptance checklist
 
@@ -45,6 +47,33 @@ These are deterministic unit tests, not proof of macOS Space reporting or permis
 - [ ] Relaunch without that argument: the menu returns to SkyLight when available.
 - [ ] Validate the all-Spaces backend after macOS upgrades. Missing symbols or failed reads should fall back, not prevent launch. A changed private ABI still requires compatibility testing.
 
+### Default reservation and Accessibility
+
+- [ ] Launch with no saved `reserveSpace` preference: the menu is checked without user opt-in. Startup never prompts for Accessibility. Missing access leaves the dock usable and shows a clear permission-needed item. An explicit permission request must not prompt if the live grant is already present.
+- [ ] Run `--reservation-status`: verify the report comes from the running app's PID/path, not the diagnostic CLI. If a checked Settings entry is stale after rebuilding, the app reports missing permission instead of pretending it can resize windows.
+- [ ] Grant permission: maximize a normal window. Its bottom edge clears Altdock while its top, left, and width remain unchanged. Repeat more than twice, including animated zooms; later user maximizations must still be adjusted.
+- [ ] Test a window without the optional `AXFullScreen` attribute and a size-resizable window with read-only position. Neither should be rejected solely for that missing capability.
+- [ ] Cause one delayed/failed AX resize: verify bounded retry rather than permanent suppression. Inspect the diagnostic for the reason.
+- [ ] Test left/right halves and bottom quarters, including macOS's tile margins. Ordinary floating windows and top-only tiles are untouched.
+- [ ] Test dialogs, full-screen windows, minimized windows, and fixed/minimum-size apps. Unsupported writes must not repeatedly shrink or oscillate windows.
+- [ ] Switch between Spaces with many/few apps: reserved height remains stable despite icon shrinking or an empty Space.
+- [ ] Move/resize a managed window manually: Altdock does not restore a stale original frame over that placement.
+- [ ] Run a competing tiling manager: after a bounded retry Altdock yields instead of continually fighting its layout.
+- [ ] Disable Reserve Space, hide Altdock, or enable auto-hide: only unchanged Altdock-adjusted windows are restored. Auto-hide edge reveals do not resize windows.
+- [ ] Change icon size/display and disconnect a monitor. Verify correct coordinates and guarded restoration.
+- [ ] Revoke Accessibility while running: stop adjusting windows without crashes; restore permission and verify recovery.
+
+### System Dock borrowing and restoration
+
+- [ ] Record the original Dock position and auto-hide setting. Launch Altdock: position becomes right and auto-hide becomes enabled. No size, magnification, pinned-icon, or delay preference changes.
+- [ ] Start with right/auto-hide already enabled: no unnecessary Dock restart or rewrite.
+- [ ] Quit normally: both original values return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
+- [ ] Force-quit only the main Altdock process: the helper restores both settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
+- [ ] For a controlled recovery test, terminate both processes, then relaunch and quit Altdock: restore the original pre-session settings, not the temporary right/auto-hide values.
+- [ ] Launch a second instance: it must not overwrite the existing original-settings record or change preferences on exit.
+- [ ] Confirm diagnostics (`--list-spaces`, `--list-current-space`) neither modify system Dock preferences nor request Accessibility.
+- [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the two system Dock settings have durable crash recovery.
+
 ### Presentation and settings
 
 - [ ] Change icon size; enable and disable automatic hiding; hide and show Altdock from its status menu.
@@ -53,7 +82,7 @@ These are deterministic unit tests, not proof of macOS Space reporting or permis
 - [ ] Open enough apps to overflow the display. Every icon remains reachable by horizontal scrolling.
 - [ ] Use VoiceOver to identify the dock, app names, and active status.
 - [ ] Restart Altdock: icon size, display selection, and auto-hide persist.
-- [ ] Confirm Apple’s Dock preferences are unchanged.
+- [ ] Confirm only the two intended system Dock preferences change while Altdock runs and both are restored on quit.
 
 ### Displays, full screen, and lifecycle
 

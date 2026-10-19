@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-public struct SpaceWindow: Equatable {
+public struct SpaceWindow: Equatable, Sendable {
     public let id: UInt32
     public let processID: Int32
     public let bounds: CGRect

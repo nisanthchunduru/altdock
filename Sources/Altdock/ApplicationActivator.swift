@@ -22,8 +22,7 @@ enum ApplicationActivator {
     }
 
     static func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        AccessibilityPermission.shared.requestIfNeeded()
     }
 
     private static func accessibilityWindow(
@@ -35,6 +34,7 @@ enum ApplicationActivator {
         guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &value) == .success,
               let accessibleWindows = value as? [AXUIElement] else { return nil }
 
+        for accessibleWindow in accessibleWindows { AXUIElementSetMessagingTimeout(accessibleWindow, 0.2) }
         for window in windows {
             if let match = accessibleWindows.first(where: { matches($0, window: window) }) {
                 return match

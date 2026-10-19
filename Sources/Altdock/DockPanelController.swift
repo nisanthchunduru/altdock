@@ -9,8 +9,8 @@ private final class DockPanel: NSPanel {
 }
 
 @MainActor
-final class DockPanelController {
-    var isEnabled = true {
+final class DockPanelController: ObservableObject {
+    @Published var isEnabled = true {
         didSet { updateVisibility() }
     }
 

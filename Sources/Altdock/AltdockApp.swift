@@ -4,6 +4,17 @@ import AppKit
 @MainActor
 enum AltdockApp {
     static func main() {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--restore-dock-after-exit",
+           let token = UUID(uuidString: CommandLine.arguments[2]) {
+            do { try SystemDockSession().restoreAfterExit(token: token) }
+            catch { NSLog("Altdock Dock recovery failed: %@", error.localizedDescription) }
+            return
+        }
+        if CommandLine.arguments.contains("--reservation-status") {
+            do { print(try String(contentsOf: ReservationDiagnostics.fileURL, encoding: .utf8)) }
+            catch { print("No reservation diagnostics yet. Launch Altdock first.") }
+            return
+        }
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         let tracker = SpaceWindowTracker(usePrivateAPI: !CommandLine.arguments.contains("--public-windows"))
@@ -35,14 +46,22 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: DockModel?
     private var dock: DockPanelController?
     private var statusMenu: StatusMenuController?
+    private var reservation: WindowReservationController?
+    private let systemDock = SystemDockSession()
+    private var isQuitting = false
 
     init(windowTracker: SpaceWindowTracker) {
         self.windowTracker = windowTracker
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let bundleID = Bundle.main.bundleIdentifier,
-           NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
+        do {
+            try systemDock.begin { [systemDock] token in try systemDock.launchGuardian(token: token) }
+        } catch SystemDockError.alreadyRunning {
+            NSApp.terminate(nil)
+            return
+        } catch {
+            NSAlert(error: error).runModal()
             NSApp.terminate(nil)
             return
         }
@@ -52,13 +71,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         let dock = DockPanelController(model: model, preferences: preferences)
         self.model = model
         self.dock = dock
-        statusMenu = StatusMenuController(preferences: preferences, dock: dock, model: model)
+        let reservation = WindowReservationController(preferences: preferences, model: model, dock: dock)
+        self.reservation = reservation
+        statusMenu = StatusMenuController(preferences: preferences, dock: dock, model: model, reservation: reservation)
         model.start()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isQuitting else { return .terminateLater }
+        isQuitting = true
         model?.stop()
         dock?.stop()
+        Task {
+            await reservation?.stop()
+            do { try systemDock.finish() }
+            catch { NSLog("Altdock will retry Dock restoration via its recovery helper: %@", error.localizedDescription) }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        try? systemDock.finish()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
