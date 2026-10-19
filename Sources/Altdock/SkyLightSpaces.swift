@@ -53,6 +53,18 @@ final class SkyLightSpaces {
         return identifiers.isEmpty ? nil : identifiers
     }
 
+    func spaceIDs(on displayBounds: CGRect) -> Set<UInt64>? {
+        guard let identifier = copyDisplayIdentifier(connection, displayBounds)?.takeRetainedValue(),
+              let result = copyDisplaySpaces(connection),
+              let displays = result.takeRetainedValue() as? [[String: Any]] else { return nil }
+        let display = displays.first { $0["Display Identifier"] as? String == identifier as String }
+            ?? (displays.count == 1 ? displays.first : nil)
+        guard let entries = display?["Spaces"] as? [[String: Any]] else { return nil }
+        let identifiers = entries.compactMap { ($0["ManagedSpaceID"] as? NSNumber)?.uint64Value }
+        guard identifiers.count == entries.count else { return nil }
+        return Set(identifiers.filter { $0 != 0 })
+    }
+
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? {
         guard let identifier = copyDisplayIdentifier(connection, displayBounds)?.takeRetainedValue() else { return nil }
         let spaceID = currentSpace(connection, identifier)

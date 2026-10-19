@@ -33,6 +33,20 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Switch Spaces rapidly and during launch/termination: old-Space icons do not persist.
 - [ ] Use Mission Control and Stage Manager; check membership again after leaving their transition states.
 
+### Persistent Space-bound panels
+
+- [ ] Run `--panel-status`: one distinct native window ID for each Space on the selected display, with no shared fallback in the normal working case. `ordered: true` on an inactive panel means it remains ordered in that Space, not that it is visible on the current desktop.
+- [ ] Swipe/keyboard-switch between Spaces with different icon counts. Each dock should travel with its workspace rather than one stationary dock changing width. Repeat and cancel an interactive swipe midway.
+- [ ] Start with the system Dock visible at the bottom, then launch Altdock. Every panel must sit 8 points above its display's physical bottom, even if `NSScreen.visibleFrame` still reports the old bottom strip. Repeat with Small/Medium/Large icons, a negatively positioned monitor, and `--shared-panel`.
+- [ ] Compare `--panel-status` before/after a switch: window IDs, ownership, and per-Space frames remain stable; only the active Space changes unless app membership changed.
+- [ ] Open/close an app window on a Space, then leave and return: its existing panel updates correctly. Empty Spaces have their own stable empty-state panels.
+- [ ] Create/delete/reorder Spaces in Mission Control: panels are added/closed without ghosts, duplicate bars, or unintended desktop switching.
+- [ ] Select another display, unplug/reconnect it, and change scaling: old panels close and the new display gets the correct set. Test both separate-Spaces and shared-Spaces display configurations.
+- [ ] Test full-screen Spaces and Split View. A successful membership assignment is not proof that macOS displays the auxiliary panel there.
+- [ ] With auto-hide on, only the active panel responds to the reveal edge. Hide/show from the menu applies globally. Quit leaves no Altdock panels on any Space.
+- [ ] For A/B comparison, quit and run `open dist/Altdock.app --args --shared-panel`; relaunch without the argument to restore the prototype. This uses the same signed binary and needs no re-signing.
+- [ ] Verify stale clicks from an outgoing panel do not activate an app after changing Spaces.
+
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.
@@ -54,6 +68,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Grant permission: maximize a normal window. Its bottom edge clears Altdock while its top, left, and width remain unchanged. Repeat more than twice, including animated zooms; later user maximizations must still be adjusted.
 - [ ] Test a window without the optional `AXFullScreen` attribute and a size-resizable window with read-only position. Neither should be rejected solely for that missing capability.
 - [ ] Cause one delayed/failed AX resize: verify bounded retry rather than permanent suppression. Inspect the diagnostic for the reason.
+- [ ] Verify reservation leaves space only for Altdock, not Altdock plus the old system Dock strip. Test maximized windows aligned with either the old reported work-area bottom or the full display bottom; do not expand windows that already clear the dock.
 - [ ] Test left/right halves and bottom quarters, including macOS's tile margins. Ordinary floating windows and top-only tiles are untouched.
 - [ ] Test dialogs, full-screen windows, minimized windows, and fixed/minimum-size apps. Unsupported writes must not repeatedly shrink or oscillate windows.
 - [ ] Switch between Spaces with many/few apps: reserved height remains stable despite icon shrinking or an empty Space.

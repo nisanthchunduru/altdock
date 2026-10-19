@@ -4,17 +4,16 @@ import SwiftUI
 private typealias DockViewState<Value> = SwiftUI.State<Value>
 
 struct DockView: View {
-    @ObservedObject var model: DockModel
-    @ObservedObject var preferences: DockPreferences
-    let iconSize: CGFloat
+    @ObservedObject var presentation: DockPresentation
+    let activate: (NSRunningApplication) -> Void
 
     var body: some View {
         Group {
-            if model.applications.isEmpty && model.isSwitchingSpace {
+            if presentation.applications.isEmpty && presentation.isUpdating {
                 ProgressView().controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Updating applications")
-            } else if model.applications.isEmpty {
+            } else if presentation.applications.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "rectangle.bottomthird.inset.filled")
                         .font(.title2)
@@ -30,12 +29,12 @@ struct DockView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .bottom, spacing: 6) {
-                        ForEach(model.applications) { application in
+                        ForEach(presentation.applications) { application in
                             DockIcon(
                                 application: application,
-                                isActive: model.activeProcessID == application.id,
-                                size: iconSize,
-                                activate: { model.activate(application.application) }
+                                isActive: presentation.activeProcessID == application.id,
+                                size: presentation.iconSize,
+                                activate: { activate(application.application) }
                             )
                         }
                     }
@@ -45,7 +44,7 @@ struct DockView: View {
                 }
             }
         }
-        .disabled(model.isSwitchingSpace)
+        .disabled(presentation.isUpdating)
         .background(DockMaterial())
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {

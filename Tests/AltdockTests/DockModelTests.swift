@@ -57,6 +57,18 @@ struct DockModelTests {
         #expect(!fixture.model.isSwitchingSpace)
     }
 
+    @Test("An outgoing Space's panel cannot activate an app after the active Space changes")
+    func rejectsClicksFromAnotherSpace() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.model.refresh()
+        fixture.tracker.current = fixture.selection(spaceID: 200)
+        fixture.model.activate(fixture.application, expectedSpaceID: 100)
+        #expect(fixture.activatedWindowIDs.isEmpty)
+        fixture.model.activate(fixture.application, expectedSpaceID: 200)
+        #expect(fixture.activatedWindowIDs == [1])
+    }
+
     @Test("Public-API fallback does not mistake a transition's empty snapshot for an empty Space")
     func suppressesTransientEmptyFallback() {
         let fixture = Fixture()
@@ -98,10 +110,12 @@ private final class Fixture {
     let application = NSRunningApplication.current
     let tracker = FakeWindowTracker()
     let clock = TestClock()
+    var activatedWindowIDs: [UInt32] = []
     lazy var model = DockModel(
         preferences: DockPreferences(), windowTracker: tracker,
         runningApplications: { [application] in [application] }, now: { [clock] in clock.date },
-        displayBounds: { CGRect(x: 0, y: 0, width: 1440, height: 900) }
+        displayBounds: { CGRect(x: 0, y: 0, width: 1440, height: 900) },
+        activateApplication: { [weak self] _, windows in self?.activatedWindowIDs = windows.map(\.id) }
     )
 
     init() { tracker.current = selection(spaceID: 100) }

@@ -13,6 +13,8 @@ final class DockModel: ObservableObject {
     @Published private(set) var applications: [DockApplication] = []
     @Published private(set) var activeProcessID: Int32?
     @Published private(set) var isSwitchingSpace = true
+    @Published private(set) var activeSpaceID: UInt64?
+    @Published private(set) var spaceApplications: [UInt64: [DockApplication]]?
 
     var trackingDescription: String { windowTracker.backendDescription }
     var currentSpaceWindows: [SpaceWindow] {
@@ -26,6 +28,7 @@ final class DockModel: ObservableObject {
     private let windowTracker: any SpaceWindowTracking
     private let runningApplications: () -> [NSRunningApplication]
     private let now: () -> Date
+    private let activateApplication: (NSRunningApplication, [SpaceWindow]) -> Void
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var spaceRefresh: DispatchWorkItem?
@@ -39,12 +42,16 @@ final class DockModel: ObservableObject {
             NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
         },
         now: @escaping () -> Date = Date.init,
-        displayBounds: (() -> CGRect?)? = nil
+        displayBounds: (() -> CGRect?)? = nil,
+        activateApplication: @escaping (NSRunningApplication, [SpaceWindow]) -> Void = {
+            ApplicationActivator.activate($0, matching: $1)
+        }
     ) {
         self.displayBounds = displayBounds ?? { preferences.screen.map { CGDisplayBounds($0.displayID) } }
         self.windowTracker = windowTracker
         self.runningApplications = runningApplications
         self.now = now
+        self.activateApplication = activateApplication
     }
 
     func start() {
@@ -86,18 +93,20 @@ final class DockModel: ObservableObject {
     func refresh() {
         let running = runningApplications()
         windowTracker.refresh(regularProcessIDs: Set(running.map(\.processIdentifier)))
+        publishAllSpaces(running: running)
         if !publishSelection(running: running), isSwitchingSpace, now() < fallbackReadyAt {
             scheduleRefresh(after: 0.08)
         }
     }
 
-    func activate(_ application: NSRunningApplication) {
+    func activate(_ application: NSRunningApplication, expectedSpaceID: UInt64? = nil) {
         guard !isSwitchingSpace, let bounds = displayBounds() else { return }
         let runningIDs = Set(runningApplications().map(\.processIdentifier))
         windowTracker.refresh(regularProcessIDs: runningIDs)
         guard let selection = windowTracker.selection(on: bounds, regularProcessIDs: runningIDs)
         else { return }
-        ApplicationActivator.activate(application, matching: selection.windows.filter { $0.processID == application.processIdentifier })
+        guard expectedSpaceID == nil || selection.spaceID == expectedSpaceID else { return }
+        activateApplication(application, selection.windows.filter { $0.processID == application.processIdentifier })
     }
 
     func spaceDidChange() {
@@ -109,6 +118,29 @@ final class DockModel: ObservableObject {
             scheduleRefresh(after: 0)
         } else {
             scheduleRefresh(after: 0.08)
+        }
+    }
+
+    private func publishAllSpaces(running: [NSRunningApplication]) {
+        guard let bounds = displayBounds(), let selections = windowTracker.allSelections(
+            on: bounds, regularProcessIDs: Set(running.map(\.processIdentifier))
+        ) else {
+            if spaceApplications != nil { spaceApplications = nil }
+            return
+        }
+        let byID = Dictionary(uniqueKeysWithValues: running.map { ($0.processIdentifier, $0) })
+        var snapshots: [UInt64: [DockApplication]] = [:]
+        for (spaceID, windows) in selections {
+            let ordered = SpaceApplications.orderedProcessIDs(
+                windows: windows, previousOrder: iconOrders[spaceID, default: []],
+                names: byID.mapValues { $0.localizedName ?? "" }
+            )
+            iconOrders[spaceID] = ordered
+            snapshots[spaceID] = ordered.compactMap { byID[$0].map(DockApplication.init) }
+        }
+        iconOrders = iconOrders.filter { $0.key == 0 || selections[$0.key] != nil }
+        if spaceApplications?.mapValues({ $0.map(\.id) }) != snapshots.mapValues({ $0.map(\.id) }) {
+            spaceApplications = snapshots
         }
     }
 
@@ -129,6 +161,7 @@ final class DockModel: ObservableObject {
         if orderedIDs != applications.map(\.id) {
             applications = orderedIDs.compactMap { applicationsByID[$0].map(DockApplication.init) }
         }
+        if activeSpaceID != selection.spaceID { activeSpaceID = selection.spaceID }
         let frontmostID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if activeProcessID != frontmostID { activeProcessID = frontmostID }
         if isSwitchingSpace { isSwitchingSpace = false }

@@ -2,7 +2,7 @@
 
 Productivity-focused MacOS Dock alternative for the AI era.
 
-Altdock is a native macOS menu-bar app with a floating, translucent dock. It shows **apps with windows assigned to the active Space on the selected display**—not every running app. Window membership is cached across all Spaces so switching does not clear and reload the dock.
+Altdock is a native macOS menu-bar app with translucent dock panels. It shows **apps with windows assigned to the active Space on the selected display**—not every running app. By default it preloads one persistent panel per Space, so the outgoing dock does not have to change its icons and size into the incoming dock.
 
 ## Build and run
 
@@ -39,12 +39,36 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 - Icons shrink to accommodate more apps; horizontal scrolling handles overflow.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
 
+## Persistent panels per Space — prototype
+
+- Each known Space on the selected display gets a separate `NSPanel`, SwiftUI hosting view, and presentation state, including inactive/empty Spaces. One shared model still does window discovery; this is not a separate scan/timer per Space.
+- Panels use managed, Space-bound collection behavior rather than `canJoinAllSpaces`/`stationary`. macOS controls their visibility as desktops move. In always-visible mode, inactive panels remain **ordered in their own Spaces**, not moved onto or shown over the active desktop.
+- `SLSMoveWindowsToManagedSpace` is dynamically loaded to attach **only Altdock-owned panels**. Creation occurs at zero opacity; membership must read back as exactly the destination Space before a panel can be shown. Altdock does not move other applications' windows between Spaces or programmatically switch desktops.
+- Panels sit **8 points above the display's physical bottom**, not above the old system Dock's reserved work area. A lingering bottom inset in `NSScreen.visibleFrame` must not lift Altdock. Horizontal work-area insets still constrain width and centering.
+- Switching Spaces updates focus/visibility, not panel membership, root hosting views, or frame sizes. Membership changes within a Space can still change that Space's dock size. Display changes rebuild the relevant panels, deleted Spaces close theirs, and quit closes all panels.
+- Auto-hide remains available; only the active panel responds to the reveal edge. Inactive panels are hidden in auto-hide mode. Hide Altdock hides every panel.
+- If all-Spaces data or placement is unavailable, a shared panel is used as a compatibility fallback. A failed placement is closed invisibly and is not repeatedly retried; recreating the Space/display or relaunching retries it. The menu reports the active presentation mode. Full-screen Spaces and multi-display arrangements still require hands-on testing; membership verification alone does not prove native animation/visibility in every macOS configuration.
+
+To inspect the running app's panel IDs, assigned Spaces, frames, app PIDs, and ordering state:
+
+```sh
+dist/Altdock.app/Contents/MacOS/Altdock --panel-status
+```
+
+This reads `~/Library/Application Support/Altdock/panel-status.json` and does not start another dock or change preferences. For comparison, quit Altdock and relaunch the same binary in the old shared-panel mode:
+
+```sh
+open dist/Altdock.app --args --shared-panel
+```
+
+Quit and launch without that argument to return to per-Space panels. `--public-windows` also falls back to a shared panel because it cannot preload membership for inactive Spaces.
+
 ## Space reservation — on by default
 
 Grant **Accessibility** through Altdock's menu if its status says access is missing. Startup only checks permission; it never automatically prompts. Explicit requests re-check the live grant and do nothing when permission is already granted. Altdock automatically shortens maximized and bottom-tiled windows to leave room above its dock, preserving their top, left, and width. Reserve Space is already on, including for existing installations without a saved preference.
 
 - This is Accessibility-based window adjustment, **not** a system-wide change to `NSScreen.visibleFrame`. Floating windows, dialogs, full-screen/minimized windows, non-resizable windows, and windows whose identity or attributes cannot be read safely are left alone.
-- Clearance is based on the configured icon size, not app count or hover magnification. Switching Spaces does not continuously resize app windows as icons change.
+- Clearance is based on the configured icon size, not app count or hover magnification, and is measured from the same physical display bottom as the panel. It does not add the system Dock's old bottom inset a second time. Maximized windows ending at either the reported work-area bottom or the full display bottom can qualify; windows already clear of Altdock are not expanded. Switching Spaces does not continuously resize app windows as icons change.
 - AX events are coalesced for 150 ms, with three-second reconciliation for missed events. Window reads, observer registration, and writes run off the UI thread. App/window attribute access uses a 250 ms messaging timeout. An unsupported optional `AXFullScreen` flag does not disqualify a normal window; a failed read is still retried safely. Writable position is required only if the size change actually displaces the window.
 - Resize verification allows up to eight observations, separated by 60 ms, for asynchronous window animations. Transient write failures receive bounded retries rather than permanent suppression after one attempt.
 - The engine suppresses its own notifications and yields after repeated competing writes. A later user interaction followed by a new maximize/tile geometry change starts a fresh adjustment rather than exhausting a lifetime retry count. It reads only aggregate mouse/key event counts—not keystrokes or event contents—to distinguish new interaction from its own writes.
@@ -77,13 +101,13 @@ The `--list-current-space` and `--list-spaces` diagnostics do not change Dock pr
 
 ## Space semantics and permissions
 
-Altdock dynamically loads **private SkyLight APIs**: `SLSCopySpacesForWindows` maps windows to Spaces; `SLSCopyManagedDisplaySpaces` enumerates Spaces; `SLSCopyBestManagedDisplayForRect` and `SLSManagedDisplayGetCurrentSpace` identify the selected display’s active Space. `CGWindowListCopyWindowInfo(.optionAll)` supplies window metadata, including windows on inactive Spaces. No screenshots, window titles, or network access are used.
+Altdock dynamically loads **private SkyLight APIs**: `SLSCopySpacesForWindows` maps windows to Spaces; `SLSCopyManagedDisplaySpaces` enumerates Spaces; `SLSCopyBestManagedDisplayForRect` and `SLSManagedDisplayGetCurrentSpace` identify the selected display’s active Space. `SLSMoveWindowsToManagedSpace` places Altdock's own panels. `CGWindowListCopyWindowInfo(.optionAll)` supplies window metadata, including windows on inactive Spaces. No screenshots, window titles, or network access are used.
 
 - Private APIs are undocumented and may break with macOS updates. Missing symbols or failed snapshot queries fall back to public on-screen discovery. Dynamic loading avoids a hard launch-time dependency, but cannot guarantee compatibility with a changed private ABI. This build is intended for direct distribution, not Mac App Store submission.
 - Only normal-layer, nontransparent windows belonging to regular applications qualify. Windows with no reported Space membership are excluded. Finder appears only when it has a qualifying window, not merely because its desktop is visible.
 - Hidden and minimized windows can qualify when WindowServer still returns their geometry and Space membership. Apps without qualifying windows remain omitted. The public fallback omits hidden and minimized windows because it only knows what is on-screen.
 - “Current Space” is scoped to the **selected display** using both Space membership and window geometry. A window spanning displays can qualify on either if assigned to that display’s active Space. Windows assigned to several Spaces appear in each corresponding list.
-- A 0.75-second timer and app lifecycle notifications reconcile the all-Spaces cache. A Space-change notification selects cached membership immediately, then schedules reconciliation. Existing icons are not cleared first, and their ordering is retained per Space. A newly created/unknown Space keeps the previous icons non-interactive until a snapshot is available; a known empty Space displays the empty state immediately. Caches can briefly lag window moves or closes until reconciliation.
+- A 0.75-second timer and app lifecycle notifications reconcile all-Spaces membership and presentations. Existing panel identities are retained across Space switches, with cached icon ordering per Space. Unknown/new Spaces use the existing compatibility path until discovery/placement succeeds; a confirmed empty Space has its own empty-state panel. Caches can briefly lag window moves or closes until reconciliation.
 - Public fallback transitions preserve the previous, non-interactive dock during a 0.4-second grace period, with short retries, rather than showing a misleading empty state. Full scans currently run on the main thread; large window counts may increase refresh cost.
 - **Screen Recording is not requested.** Filtering uses process IDs, window geometry, and Space IDs—not protected window titles or images.
 - **Accessibility is required for space reservation and precise window control**, but the basic dock still works without it. “Grant Accessibility Access…” opens the permission settings. When granted, Altdock uses `_AXUIElementGetWindow` when available to match an accessible window by ID, unminimizes it, and raises it before activating the app. Activation can fall back to geometry matching; reservation does not resize geometrically ambiguous windows if exact identity is unavailable. Without a usable accessible window, macOS chooses which window to activate and may switch Spaces; restoration of a particular minimized window is not guaranteed without Accessibility. Hidden apps are unhidden on activation. Clicks re-query membership to avoid acting on stale icons.

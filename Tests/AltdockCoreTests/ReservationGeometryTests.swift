@@ -52,10 +52,53 @@ struct ReservationGeometryTests {
         #expect(ReservationGeometry(display: display, visible: visible, preferredIconSize: 64).bottomLimit == 795)
     }
 
-    @Test("Existing bottom reservations are respected and not overwritten")
-    func systemDockInset() throws {
+    @Test("The old system Dock's bottom inset is not added to Altdock's reservation")
+    func ignoresOldSystemDockInset() throws {
         let inset = CGRect(x: 0, y: 25, width: 1440, height: 795)
-        let target = try #require(ReservationGeometry(display: display, visible: inset, preferredIconSize: 52).target(for: inset))
-        #expect(target.maxY == 727)
+        let geometry = ReservationGeometry(display: display, visible: inset, preferredIconSize: 52)
+        let target = try #require(geometry.target(for: inset))
+        #expect(target.maxY == 807)
+    }
+
+    @Test("Maximized windows reaching the display bottom qualify even when visibleFrame is stale")
+    func recognizesPhysicalBottomAlignment() throws {
+        let inset = CGRect(x: 0, y: 25, width: 1440, height: 795)
+        let target = try #require(ReservationGeometry(display: display, visible: inset, preferredIconSize: 52).target(for: visible))
+        #expect(target.maxY == 807)
+        #expect(target.origin == visible.origin)
+    }
+
+    @Test("A window already above Altdock is not expanded to fill the old system Dock gap")
+    func doesNotExpandWindows() {
+        let inset = CGRect(x: 0, y: 25, width: 1440, height: 700)
+        #expect(ReservationGeometry(display: display, visible: inset, preferredIconSize: 52).target(for: inset) == nil)
+    }
+
+    @Test("The measured 11-point overlap is corrected with a 15-point shrink and a four-point gap")
+    func observedMaximizedWindowOverlap() throws {
+        let screen = CGRect(x: 0, y: 0, width: 3008, height: 1692)
+        let window = CGRect(x: 0, y: 30, width: 3008, height: 1572)
+        let panel = DockGeometry.frame(
+            contentSize: CGSize(width: 626, height: DockGeometry.panelHeight(iconSize: 64)),
+            visibleFrame: CGRect(x: 0, y: 90, width: 3008, height: 1572), screenFrame: screen
+        )
+        let dockTop = screen.maxY - panel.maxY
+        #expect(window.maxY - dockTop == 11)
+        let target = try #require(ReservationGeometry(display: screen, visible: window, preferredIconSize: 64).target(for: window))
+        #expect(window.height - target.height == 15)
+        #expect(dockTop - target.maxY == 4)
+        #expect(target.origin == window.origin)
+        #expect(target.width == window.width)
+    }
+
+    @Test("Reservation and panel layout use the same physical bottom and clearance", arguments: [CGFloat(40), 52, 64])
+    func panelAndReservationAgree(_ iconSize: CGFloat) {
+        let panel = DockGeometry.frame(
+            contentSize: CGSize(width: 400, height: DockGeometry.panelHeight(iconSize: iconSize)),
+            visibleFrame: CGRect(x: 0, y: 90, width: 1440, height: 785), screenFrame: display
+        )
+        let quartzPanelTop = display.maxY - panel.maxY
+        let reservation = ReservationGeometry(display: display, visible: CGRect(x: 0, y: 25, width: 1440, height: 785), preferredIconSize: iconSize)
+        #expect(quartzPanelTop - reservation.bottomLimit == DockGeometry.reservationClearance)
     }
 }

@@ -25,14 +25,34 @@ struct DockGeometryTests {
         #expect(DockGeometry.iconSize(preferred: 52, applicationCount: 0, availableWidth: 1000) == 52)
     }
 
-    @Test("Centers Altdock above the system Dock without covering it")
-    func avoidsSystemDock() {
+    @Test("Uses the display bottom instead of the hidden system Dock's old reserved area")
+    func ignoresOldSystemDockBottomInset() {
         let frame = DockGeometry.frame(
             contentSize: CGSize(width: 400, height: 81),
             visibleFrame: CGRect(x: 0, y: 80, width: 1440, height: 795),
             screenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
         )
-        #expect(frame == CGRect(x: 520, y: 88, width: 400, height: 81))
+        #expect(frame == CGRect(x: 520, y: 8, width: 400, height: 81))
+    }
+
+    @Test("A stale bottom inset on a negatively positioned display does not lift the dock")
+    func ignoresInsetOnOffsetDisplay() {
+        let frame = DockGeometry.frame(
+            contentSize: CGSize(width: 400, height: 81),
+            visibleFrame: CGRect(x: -1440, y: -110, width: 1440, height: 785),
+            screenFrame: CGRect(x: -1440, y: -200, width: 1440, height: 900)
+        )
+        #expect(frame.minY == -192)
+    }
+
+    @Test("Horizontal work-area insets still constrain the dock while bottom insets do not")
+    func preservesHorizontalInsets() {
+        let frame = DockGeometry.frame(
+            contentSize: CGSize(width: 400, height: 81),
+            visibleFrame: CGRect(x: 100, y: 90, width: 1340, height: 785),
+            screenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+        )
+        #expect(frame == CGRect(x: 570, y: 8, width: 400, height: 81))
     }
 
     @Test("Clamps dock width and positions it on an offset display")

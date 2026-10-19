@@ -13,6 +13,11 @@ protocol SpaceWindowTracking {
     var backendDescription: String { get }
     func refresh(regularProcessIDs: Set<Int32>)
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection?
+    func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]?
+}
+
+extension SpaceWindowTracking {
+    func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { nil }
 }
 
 @MainActor
@@ -59,6 +64,20 @@ final class SpaceWindowTracker: SpaceWindowTracking {
                 on: displayBounds, requiringOnScreen: spaceID == nil
             )
         )
+    }
+
+    func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? {
+        guard let index, let spaceIDs = spaces?.spaceIDs(on: displayBounds) else { return nil }
+        var selections: [UInt64: [SpaceWindow]] = [:]
+        for spaceID in spaceIDs {
+            guard let windows = index.windows(in: spaceID) else { continue }
+            selections[spaceID] = SpaceApplications.windows(
+                from: windows, regularProcessIDs: regularProcessIDs,
+                excluding: ProcessInfo.processInfo.processIdentifier,
+                on: displayBounds, requiringOnScreen: false
+            )
+        }
+        return selections
     }
 
     private func allSpacesSnapshot(regularProcessIDs: Set<Int32>) -> SpaceWindowIndex? {

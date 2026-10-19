@@ -1,123 +1,202 @@
-import AltdockCore
 import AppKit
 import Combine
-import SwiftUI
-
-private final class DockPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
 
 @MainActor
 final class DockPanelController: ObservableObject {
-    @Published var isEnabled = true {
-        didSet { updateVisibility() }
-    }
+    @Published var isEnabled = true { didSet { updateVisibility() } }
+    @Published private(set) var presentationDescription = "Preparing dock panels"
 
     private let model: DockModel
     private let preferences: DockPreferences
-    private let panel: NSPanel
+    private let usePerSpacePanels: Bool
+    private let displayProvider: () -> DockDisplay?
+    private let makeSurface: (UInt64?) -> any DockSurface
+    private let report: (DockPanelReport) -> Void
+    private var surfaces: [UInt64: any DockSurface] = [:]
+    private var failedSpaces: Set<UInt64> = []
+    private var sharedSurface: (any DockSurface)?
+    private var display: DockDisplay?
     private var subscriptions: Set<AnyCancellable> = []
-    private var screenObserver: NSObjectProtocol?
     private var visibilityTimer: Timer?
-    private var lastInteraction = Date.distantPast
+    private var lastInteraction: [UInt64: Date] = [:]
+    private var stopped = false
 
-    init(model: DockModel, preferences: DockPreferences) {
+    init(
+        model: DockModel, preferences: DockPreferences, usePerSpacePanels: Bool = true,
+        displayProvider: (() -> DockDisplay?)? = nil,
+        makeSurface: ((UInt64?) -> any DockSurface)? = nil,
+        report: @escaping (DockPanelReport) -> Void = { DockPanelDiagnostics.shared.publish($0) }
+    ) {
         self.model = model
         self.preferences = preferences
-        panel = DockPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.title = "Altdock"
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = true
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.isMovable = false
-        panel.isReleasedWhenClosed = false
-        panel.animationBehavior = .none
-
-        model.objectWillChange.merge(with: preferences.objectWillChange)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.updateLayout() }
-            .store(in: &subscriptions)
-        screenObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.model.refresh()
-                self?.updateLayout()
+        self.usePerSpacePanels = usePerSpacePanels
+        self.report = report
+        self.displayProvider = displayProvider ?? {
+            preferences.screen.map { DockDisplay(id: $0.displayID, frame: $0.frame, visibleFrame: $0.visibleFrame) }
+        }
+        if let makeSurface {
+            self.makeSurface = makeSurface
+        } else {
+            let placement = SpacePanelPlacement()
+            self.makeSurface = { [weak model] spaceID in
+                NativeDockSurface(spaceID: spaceID, placement: placement) { [weak model] application in
+                    model?.activate(application, expectedSpaceID: spaceID)
+                }
             }
         }
+        model.$spaceApplications.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
+        model.$applications.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
+        model.$activeProcessID.combineLatest(model.$activeSpaceID, model.$isSwitchingSpace)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
+        preferences.objectWillChange.receive(on: RunLoop.main)
+            .sink { [weak self] in self?.synchronizePanels() }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: RunLoop.main).sink { [weak self] _ in
+                self?.model.refresh()
+                self?.synchronizePanels()
+            }.store(in: &subscriptions)
         visibilityTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateVisibility() }
+            MainActor.assumeIsolated { self?.pollDisplayAndVisibility() }
         }
         visibilityTimer?.tolerance = 0.05
-        updateLayout()
+        synchronizePanels()
     }
 
     func stop() {
+        stopped = true
         visibilityTimer?.invalidate()
-        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         subscriptions.removeAll()
-        panel.orderOut(nil)
+        closeSurfaces()
+        publishReport()
     }
 
     func reveal() {
+        lastInteraction[currentKey] = Date()
         isEnabled = true
-        lastInteraction = Date()
-        updateLayout()
+        synchronizePanels()
     }
 
-    private func updateLayout() {
-        guard let screen = preferences.screen else {
-            panel.orderOut(nil)
+    func synchronizePanels() {
+        guard !stopped else { return }
+        let nextDisplay = displayProvider()
+        if display?.id != nextDisplay?.id { closeSurfaces() }
+        display = nextDisplay
+        guard let display else {
+            closeSurfaces()
+            presentationDescription = "No display available"
+            publishReport()
             return
         }
-        let iconSize = DockGeometry.iconSize(
-            preferred: preferences.iconSize, applicationCount: model.applications.count,
-            availableWidth: screen.visibleFrame.width - 24
-        )
-        let width = model.applications.isEmpty ? 264 : CGFloat(model.applications.count) * (iconSize + 12) + 18
-        let size = CGSize(width: width, height: iconSize + 29)
-        let frame = DockGeometry.frame(contentSize: size, visibleFrame: screen.visibleFrame, screenFrame: screen.frame)
-        if let hostingView = panel.contentView as? NSHostingView<DockView> {
-            hostingView.rootView = DockView(model: model, preferences: preferences, iconSize: iconSize)
-        } else {
-            panel.contentView = NSHostingView(rootView: DockView(model: model, preferences: preferences, iconSize: iconSize))
+        guard usePerSpacePanels, let snapshots = model.spaceApplications else {
+            for surface in surfaces.values { surface.close() }
+            surfaces.removeAll()
+            failedSpaces.removeAll()
+            updateCurrentSpace()
+            return
         }
-        panel.setFrame(frame, display: true)
+        for (id, surface) in surfaces where snapshots[id] == nil {
+            surface.close()
+            surfaces.removeValue(forKey: id)
+            lastInteraction.removeValue(forKey: id)
+        }
+        failedSpaces.formIntersection(snapshots.keys)
+        for id in snapshots.keys.sorted() {
+            guard let applications = snapshots[id], !failedSpaces.contains(id) else { continue }
+            let surface = surfaces[id] ?? makeSurface(id)
+            surface.update(applications: applications, isUpdating: false, layout: display.layout(applicationCount: applications.count, preferredIconSize: preferences.iconSize))
+            if surfaces[id] == nil {
+                guard surface.attach(to: id) else {
+                    surface.close()
+                    failedSpaces.insert(id)
+                    continue
+                }
+                surfaces[id] = surface
+            }
+        }
+        updateCurrentSpace()
+    }
+
+    func updateCurrentSpace() {
+        guard !stopped, let display else { return }
+        if let id = model.activeSpaceID, let surface = surfaces[id] {
+            surface.updateFocus(model.activeProcessID)
+        } else if !model.isSwitchingSpace || !model.applications.isEmpty {
+            let surface = sharedSurface ?? makeSurface(nil)
+            sharedSurface = surface
+            surface.update(
+                applications: model.applications, isUpdating: model.isSwitchingSpace,
+                layout: display.layout(applicationCount: model.applications.count, preferredIconSize: preferences.iconSize)
+            )
+            surface.updateFocus(model.activeProcessID)
+        }
+        let description = currentKey == 0
+            ? (usePerSpacePanels ? "Shared panel · placement/data fallback" : "Shared panel · compatibility mode")
+            : "One panel per Space (\(surfaces.count))" + (failedSpaces.isEmpty ? "" : " · \(failedSpaces.count) fallback")
+        if presentationDescription != description { presentationDescription = description }
         updateVisibility()
     }
 
+    func pollDisplayAndVisibility() {
+        guard !stopped else { return }
+        if displayProvider() != display { synchronizePanels() }
+        else { updateVisibility() }
+    }
+
+    private var currentKey: UInt64 {
+        guard let id = model.activeSpaceID, surfaces[id] != nil else { return 0 }
+        return id
+    }
+
+    private var currentSurface: (any DockSurface)? {
+        currentKey == 0 ? sharedSurface : surfaces[currentKey]
+    }
+
     private func updateVisibility() {
-        guard isEnabled, let screen = preferences.screen else {
-            panel.orderOut(nil)
+        guard !stopped else { return }
+        defer { publishReport() }
+        guard isEnabled, let display else {
+            surfaces.values.forEach { $0.hide() }
+            sharedSurface?.hide()
             return
         }
-        guard preferences.autoHide else {
-            if !panel.isVisible { panel.orderFrontRegardless() }
+        if !preferences.autoHide {
+            surfaces.values.forEach { $0.show() }
+            if currentKey == 0 { sharedSurface?.show() } else { sharedSurface?.hide() }
             return
         }
+        for (id, surface) in surfaces where id != currentKey { surface.hide() }
+        if currentKey != 0 { sharedSurface?.hide() }
+        guard let surface = currentSurface else { return }
         let mouse = NSEvent.mouseLocation
-        let revealZone = CGRect(x: panel.frame.minX, y: screen.frame.minY, width: panel.frame.width, height: 4)
-        let travelZone = CGRect(
-            x: panel.frame.minX - 10, y: screen.frame.minY,
-            width: panel.frame.width + 20, height: panel.frame.maxY - screen.frame.minY + 10
-        )
-        if revealZone.contains(mouse) || (panel.isVisible && travelZone.contains(mouse)) || panel.isKeyWindow {
-            lastInteraction = Date()
+        let reveal = CGRect(x: surface.frame.minX, y: display.frame.minY, width: surface.frame.width, height: 4)
+        let travel = CGRect(x: surface.frame.minX - 10, y: display.frame.minY, width: surface.frame.width + 20, height: surface.frame.maxY - display.frame.minY + 10)
+        if reveal.contains(mouse) || (surface.isOrdered && travel.contains(mouse)) || surface.isKeyWindow {
+            lastInteraction[currentKey] = Date()
         }
-        if Date().timeIntervalSince(lastInteraction) < 0.65 {
-            if !panel.isVisible { panel.orderFrontRegardless() }
-        } else if panel.isVisible {
-            panel.orderOut(nil)
+        if Date().timeIntervalSince(lastInteraction[currentKey, default: .distantPast]) < 0.65 { surface.show() }
+        else { surface.hide() }
+    }
+
+    private func closeSurfaces() {
+        surfaces.values.forEach { $0.close() }
+        surfaces.removeAll()
+        sharedSurface?.close()
+        sharedSurface = nil
+        failedSpaces.removeAll()
+        lastInteraction.removeAll()
+    }
+
+    private func publishReport() {
+        var panels = surfaces.keys.sorted().compactMap { id -> DockPanelReport.Panel? in
+            guard let surface = surfaces[id] else { return nil }
+            return .init(spaceID: id, windowNumber: surface.windowNumber, applicationProcessIDs: model.spaceApplications?[id]?.map(\.id) ?? [], frame: NSStringFromRect(surface.frame), ordered: surface.isOrdered)
         }
+        if let sharedSurface {
+            panels.append(.init(spaceID: nil, windowNumber: sharedSurface.windowNumber, applicationProcessIDs: model.applications.map(\.id), frame: NSStringFromRect(sharedSurface.frame), ordered: sharedSurface.isOrdered))
+        }
+        report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, mode: stopped ? "Stopped" : presentationDescription, panels: panels))
     }
 }

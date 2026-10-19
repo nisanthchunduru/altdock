@@ -10,6 +10,11 @@ enum AltdockApp {
             catch { NSLog("Altdock Dock recovery failed: %@", error.localizedDescription) }
             return
         }
+        if CommandLine.arguments.contains("--panel-status") {
+            do { print(try String(contentsOf: DockPanelDiagnostics.fileURL, encoding: .utf8)) }
+            catch { print("No panel diagnostics yet. Launch Altdock first.") }
+            return
+        }
         if CommandLine.arguments.contains("--reservation-status") {
             do { print(try String(contentsOf: ReservationDiagnostics.fileURL, encoding: .utf8)) }
             catch { print("No reservation diagnostics yet. Launch Altdock first.") }
@@ -68,13 +73,16 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let preferences = DockPreferences()
         let model = DockModel(preferences: preferences, windowTracker: windowTracker)
-        let dock = DockPanelController(model: model, preferences: preferences)
         self.model = model
+        model.start()
+        let dock = DockPanelController(
+            model: model, preferences: preferences,
+            usePerSpacePanels: !CommandLine.arguments.contains("--shared-panel")
+        )
         self.dock = dock
         let reservation = WindowReservationController(preferences: preferences, model: model, dock: dock)
         self.reservation = reservation
         statusMenu = StatusMenuController(preferences: preferences, dock: dock, model: model, reservation: reservation)
-        model.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

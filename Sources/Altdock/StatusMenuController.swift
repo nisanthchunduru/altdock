@@ -29,6 +29,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let heading = NSMenuItem(title: "Altdock · Current Space", action: nil, keyEquivalent: "")
         menu.addItem(heading)
         menu.addItem(NSMenuItem(title: model.trackingDescription, action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: dock.presentationDescription, action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         addItem(dock.isEnabled ? "Hide Altdock" : "Show Altdock", action: #selector(toggleDock), to: menu)
         addItem("Automatically Hide", action: #selector(toggleAutoHide), checked: preferences.autoHide, to: menu)

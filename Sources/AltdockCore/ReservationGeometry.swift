@@ -9,14 +9,16 @@ public struct ReservationGeometry: Equatable, Sendable {
     public init(display: CGRect, visible: CGRect, preferredIconSize: CGFloat) {
         self.display = display
         self.visible = visible
-        bottomLimit = min(display.maxY, visible.maxY) - (preferredIconSize + 29 + 8 + 4)
+        bottomLimit = display.maxY - DockGeometry.panelHeight(iconSize: preferredIconSize)
+            - DockGeometry.bottomMargin - DockGeometry.reservationClearance
     }
 
     public func target(for frame: CGRect) -> CGRect? {
         guard Self.isValid(frame), Self.isValid(visible),
               frame.intersection(display).width * frame.intersection(display).height >= frame.width * frame.height * 0.5,
               frame.minX >= visible.minX - 12, frame.maxX <= visible.maxX + 12,
-              frame.minY >= visible.minY - 12, abs(frame.maxY - visible.maxY) <= 12,
+              frame.minY >= visible.minY - 12,
+              abs(frame.maxY - visible.maxY) <= 12 || abs(frame.maxY - display.maxY) <= 12,
               frame.width >= visible.width * 0.24, frame.height >= visible.height * 0.29,
               abs(frame.minY - visible.minY) <= 12 || abs(frame.minX - visible.minX) <= 12 || abs(frame.maxX - visible.maxX) <= 12,
               frame.maxY > bottomLimit + 2, bottomLimit - frame.minY >= 120 else { return nil }
