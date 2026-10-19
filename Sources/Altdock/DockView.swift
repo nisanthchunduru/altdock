@@ -9,6 +9,19 @@ struct DockView: View {
     let activate: (NSRunningApplication) -> Void
 
     private var style: DockStyle { presentation.style }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var insertionAnchor: UnitPoint {
+        switch style.edge {
+        case .bottom: .bottom
+        case .left: .leading
+        case .right: .trailing
+        }
+    }
+
+    private var iconTransition: AnyTransition {
+        reduceMotion ? .identity : .scale(scale: 0.01, anchor: insertionAnchor).combined(with: .opacity)
+    }
 
     var body: some View {
         Group {
@@ -16,17 +29,19 @@ struct DockView: View {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Updating applications")
             } else if presentation.applications.isEmpty {
-                emptyState
+                emptyState.transition(reduceMotion ? .identity : .opacity)
             } else if style.edge.isVertical {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) { icons }
                         .padding(.vertical, 12)
                 }
+                .transition(reduceMotion ? .identity : .opacity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) { icons }
                         .padding(.horizontal, 12)
                 }
+                .transition(reduceMotion ? .identity : .opacity)
             }
         }
         .disabled(presentation.isUpdating)
@@ -44,6 +59,7 @@ struct DockView: View {
             DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style) {
                 activate(application.application)
             }
+            .transition(iconTransition)
         }
     }
 

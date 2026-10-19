@@ -103,6 +103,16 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Confirm diagnostics (`--list-spaces`, `--list-current-space`) neither modify system Dock preferences nor request Accessibility.
 - [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the two system Dock settings have durable crash recovery.
 
+### App icon insertion/removal animations
+
+- [ ] Open and close the last qualifying window of an app on the current Space. The app icon scales/fades toward its dock edge over about 240 ms; neighbors and the panel reflow smoothly. Verify bottom, left, and right configurations.
+- [ ] Add/remove several apps rapidly, including while a previous resize is running. Final icons/frame must match the model, with no duplicate views or repeated animation from polling/focus updates.
+- [ ] Visit an empty Space, open its first app, and close its last app: the placeholder crossfades without stale clickable icons.
+- [ ] Switch Spaces during a shrink/expansion and return: actual panel width must match the current icon list (e.g. four 64-point icons require 322 points, not the 264-point empty-state width). Verify the rightmost/bottommost icon remains fully visible after settling.
+- [ ] Switch to a populated inactive Space: its preloaded panel does not replay app-insertion animations. Auto-hidden panels also update without replay on reveal.
+- [ ] Enable macOS Reduce Motion and repeat insertion/removal: use immediate layout changes rather than scaling/sliding. Test `--shared-panel`: membership changes are immediate to avoid animating between unrelated Spaces.
+- [ ] Fill the dock enough to require scrolling: app transitions must retain native icon size and keep overflow reachable.
+
 ### Presentation and settings
 
 - [ ] Check icon centering at bottom/left/right: the image box has equal cross-axis margins, independent of the running indicator and active-app state. With native 64-point icons and an 82-point panel, both margins are nine points. Test at 1x and Retina scaling; app artwork with asymmetric transparent padding can appear optically offset even when its image box is centered.

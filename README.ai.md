@@ -37,6 +37,8 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 - The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, display selection, and launch at login, and reports the captured native edge and icon size.
 - With **Automatically Hide** enabled, move the pointer to the corresponding bottom, left, or right screen edge to reveal Altdock.
 - Icons retain the native base size. Horizontal or vertical scrolling handles overflow instead of shrinking them.
+- On the visible Space-bound dock, app additions/removals use a 240 ms ease-in/out scale-and-fade transition anchored toward the screen edge. Neighboring icons and the panel resize together. The empty placeholder crossfades when the first/last app appears/disappears. This is a Dock-like approximation, not Apple's private animation implementation.
+- Reduce Motion disables membership movement. Initial layouts, background/hidden panels, display/style changes, and the shared-panel compatibility renderer update immediately. Switching Spaces does not replay membership animations.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
 
 ## Matching the native Dock

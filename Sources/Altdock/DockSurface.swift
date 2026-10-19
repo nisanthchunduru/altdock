@@ -23,8 +23,11 @@ private final class DockPanel: NSPanel {
 @MainActor
 final class NativeDockSurface: DockSurface {
     private let panel: NSPanel
+    private let frameAnimator: DockFrameAnimator
     private let presentation = DockPresentation()
     private let placement: SpacePanelPlacement
+    private let isSpaceBound: Bool
+    private var lastLayout: DockPanelLayout?
     private(set) var isOrdered = false
 
     var frame: CGRect { panel.frame }
@@ -33,7 +36,9 @@ final class NativeDockSurface: DockSurface {
 
     init(spaceID: UInt64?, placement: SpacePanelPlacement, activate: @escaping (NSRunningApplication) -> Void) {
         self.placement = placement
+        isSpaceBound = spaceID != nil
         panel = DockPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        frameAnimator = DockFrameAnimator(panel: panel)
         panel.title = spaceID.map { "Altdock — Space \($0)" } ?? "Altdock"
         panel.level = .floating
         panel.collectionBehavior = spaceID == nil
@@ -56,17 +61,32 @@ final class NativeDockSurface: DockSurface {
     }
 
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout) {
-        presentation.update(applications: applications, isUpdating: isUpdating, style: layout.style)
-        if panel.frame != layout.frame {
-            panel.setFrame(layout.frame, display: true)
-            panel.contentView?.layoutSubtreeIfNeeded()
+        let animate = DockMembershipAnimation.shouldAnimate(
+            previousIDs: presentation.applications.map(\.id), nextIDs: applications.map(\.id),
+            previousLayout: lastLayout, nextLayout: layout,
+            isSpaceBound: isSpaceBound, isOrdered: isOrdered, isOnActiveSpace: panel.isOnActiveSpace,
+            wasUpdating: presentation.isUpdating, isUpdating: isUpdating,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+        var transaction = Transaction(animation: animate ? DockMembershipAnimation.animation : nil)
+        transaction.disablesAnimations = !animate
+        withTransaction(transaction) {
+            presentation.update(applications: applications, isUpdating: isUpdating, style: layout.style)
         }
+        let frameChanged = lastLayout?.frame != layout.frame
+        lastLayout = layout
+        if frameChanged { frameAnimator.move(to: layout.frame, animated: animate) }
+        else { frameAnimator.reconcile() }
     }
 
-    func updateFocus(_ processID: Int32?) { presentation.updateFocus(processID) }
+    func updateFocus(_ processID: Int32?) {
+        frameAnimator.reconcile()
+        presentation.updateFocus(processID)
+    }
     func attach(to spaceID: UInt64) -> Bool { placement.attach(panel, to: spaceID) }
 
     func show() {
+        frameAnimator.reconcile()
         guard !isOrdered else { return }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
@@ -74,12 +94,14 @@ final class NativeDockSurface: DockSurface {
     }
 
     func hide() {
+        frameAnimator.finish()
         guard isOrdered else { return }
         panel.orderOut(nil)
         isOrdered = false
     }
 
     func close() {
+        frameAnimator.finish()
         panel.orderOut(nil)
         panel.close()
         isOrdered = false
