@@ -31,12 +31,12 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 - [ ] Run `--list-spaces`: the backend is SkyLight and apps from inactive Spaces are already listed, without visiting those Spaces.
 - [ ] Open different apps on two Spaces. Switch Spaces: cached icons replace the previous list without flashing the empty-state message or resizing to its width.
-- [ ] Create a new Space and switch to it immediately: an unknown destination does not temporarily claim to be empty. A confirmed empty destination does show the empty state.
+- [ ] Create a new Space and switch to it immediately: no dock is visible until that Space's own apps are known. Confirmed empty Spaces keep the panel hidden, with no message or spinner. Reservation remains enabled.
 - [ ] Open two windows from one app: there is one icon. Changing window stacking order does not reorder existing icons.
 - [ ] Move the last window for an app to another Space: its icon disappears.
 - [ ] Minimize the last window and hide its app: verify the icon disappears if WindowServer orders the window out. Space membership alone no longer keeps an ordered-out window's app in the dock. Quitting removes the icon.
 - [ ] Cover a window with another app: its Space membership remains valid.
-- [ ] Visit an empty Space: the empty-state message appears, not stale icons.
+- [ ] Visit an empty Space: no dock appears, and icons from the previous Space never substitute for an empty cache.
 - [ ] Switch Spaces rapidly and during launch/termination: old-Space icons do not persist.
 - [ ] Use Mission Control and Stage Manager; check membership again after leaving their transition states.
 
@@ -53,7 +53,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Swipe/keyboard-switch between Spaces with different icon counts. Each dock should travel with its workspace rather than one stationary dock changing width. Repeat and cancel an interactive swipe midway.
 - [ ] For original native Dock edges bottom/left/right, compare its base icon size and footprint to Altdock after launch. Every panel sits 8 points inside that original edge. Use native Dock size changes while Altdock is quit; there are no Altdock size presets. Repeat with a negatively positioned monitor and `--shared-panel`.
 - [ ] Compare `--panel-status` before/after a switch: window IDs, ownership, and per-Space frames remain stable; only the active Space changes unless app membership changed.
-- [ ] Open/close an app window on a Space, then leave and return: its existing panel updates correctly. Empty Spaces have their own stable empty-state panels.
+- [ ] Open/close an app window on a Space, then leave and return: its existing panel updates correctly. Empty Spaces retain hidden panels and reveal them only when a qualifying app appears.
 - [ ] Create/delete/reorder Spaces in Mission Control: panels are added/closed without ghosts, duplicate bars, or unintended desktop switching.
 - [ ] Select another display, unplug/reconnect it, and change scaling: old panels close and the new display gets the correct set. Test both separate-Spaces and shared-Spaces display configurations.
 - [ ] Test full-screen Spaces and Split View. A successful membership assignment is not proof that macOS displays the auxiliary panel there.
@@ -71,7 +71,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 ### Fallback and private-API compatibility
 
-- [ ] Quit Altdock and launch `open dist/Altdock.app --args --public-windows`: the menu reports on-screen fallback, transitions preserve the dock while settling, and hidden/minimized-only apps are omitted.
+- [ ] Quit Altdock and launch `open dist/Altdock.app --args --public-windows`: the menu reports on-screen fallback, the dock stays hidden while settling without a destination cache, and hidden/minimized-only apps are omitted.
 - [ ] Relaunch without that argument: the menu returns to SkyLight when available.
 - [ ] Validate the all-Spaces backend after macOS upgrades. Missing symbols or failed reads should fall back, not prevent launch. A changed private ABI still requires compatibility testing.
 
@@ -107,7 +107,8 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 - [ ] Open and close the last qualifying window of an app on the current Space. The app icon scales/fades toward its dock edge over about 240 ms; neighbors and the panel reflow smoothly. Verify bottom, left, and right configurations.
 - [ ] Add/remove several apps rapidly, including while a previous resize is running. Final icons/frame must match the model, with no duplicate views or repeated animation from polling/focus updates.
-- [ ] Visit an empty Space, open its first app, and close its last app: the placeholder crossfades without stale clickable icons.
+- [ ] Visit an empty Space, open its first app, and close its last app: the panel appears/disappears with no placeholder, blank dock, spinner, or stale clickable icons. Reservation remains enabled throughout.
+- [ ] Simulate a transient discovery failure after caching several Spaces: switching should use the destination's existing cached app list. A later successful empty snapshot must remove its old icons. Only confirmed topology changes should discard panels.
 - [ ] Switch Spaces during a shrink/expansion and return: actual panel width must match the current icon list (e.g. four 64-point icons require 322 points, not the 264-point empty-state width). Verify the rightmost/bottommost icon remains fully visible after settling.
 - [ ] Switch to a populated inactive Space: its preloaded panel does not replay app-insertion animations. Auto-hidden panels also update without replay on reveal.
 - [ ] Enable macOS Reduce Motion and repeat insertion/removal: use immediate layout changes rather than scaling/sliding. Test `--shared-panel`: membership changes are immediate to avoid animating between unrelated Spaces.

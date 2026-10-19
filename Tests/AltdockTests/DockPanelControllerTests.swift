@@ -22,7 +22,7 @@ struct DockPanelControllerTests {
         #expect(fixture.preferences.iconSize == 48)
     }
 
-    @Test("Inactive and empty Spaces get their own preloaded, ordered panels")
+    @Test("Cached apps are preloaded while an empty Space's panel stays hidden")
     func preloadsEverySpace() throws {
         let fixture = try PanelFixture()
         defer { fixture.stop() }
@@ -31,7 +31,9 @@ struct DockPanelControllerTests {
         let empty = try #require(fixture.factory.latest[200])
         #expect(populated.applications == [fixture.application.processIdentifier])
         #expect(empty.applications.isEmpty)
-        #expect(populated.isOrdered && empty.isOrdered)
+        #expect(populated.isOrdered && !empty.isOrdered)
+        #expect(fixture.controller.isEnabled)
+        #expect(fixture.preferences.reserveSpace)
         #expect(populated.windowNumber != empty.windowNumber)
         #expect(fixture.factory.shared == nil)
     }
@@ -58,7 +60,7 @@ struct DockPanelControllerTests {
         #expect(first.updateCount + second.updateCount == layoutCount)
         #expect(first.attachments == [100] && second.attachments == [200])
         #expect(first.applications.count == 1 && second.applications.isEmpty)
-        #expect(first.isOrdered && second.isOrdered)
+        #expect(first.isOrdered && !second.isOrdered)
     }
 
     @Test("Adding and deleting Spaces creates and closes only the corresponding panels")
@@ -107,7 +109,7 @@ struct DockPanelControllerTests {
         fixture.model.spaceDidChange()
         fixture.controller.updateCurrentSpace()
         #expect(fixture.factory.shared?.isOrdered == false)
-        #expect(fixture.factory.latest[200]?.isOrdered == true)
+        #expect(fixture.factory.latest[200]?.isOrdered == false)
         fixture.controller.synchronizePanels()
         #expect(fixture.factory.created.filter { $0.spaceID == 100 }.count == 1)
     }
@@ -185,15 +187,59 @@ struct DockPanelControllerTests {
         #expect(fixture.factory.shared?.attachments.isEmpty == true)
     }
 
-    @Test("Unavailable all-Spaces data uses the shared panel rather than guessing membership")
+    @Test("A failed refresh retains per-Space cached apps instead of replacing them with a shared empty panel")
     func unavailableSnapshots() throws {
         let fixture = try PanelFixture()
         defer { fixture.stop() }
         fixture.tracker.snapshots = nil
         fixture.model.refresh()
         _ = fixture.controller
-        #expect(fixture.factory.created.count == 1)
-        #expect(fixture.factory.shared?.isOrdered == true)
+        #expect(fixture.factory.created.count == 2)
+        #expect(fixture.factory.latest[100]?.isOrdered == true)
+        #expect(fixture.factory.shared == nil)
+    }
+
+    @Test("First app reveals its cached panel and last app hides it without disabling reservation")
+    func emptyPanelLifecycle() throws {
+        let fixture = try PanelFixture()
+        defer { fixture.stop() }
+        _ = fixture.controller
+        let empty = try #require(fixture.factory.latest[200])
+        #expect(!empty.isOrdered)
+        let windows = fixture.tracker.snapshots?[100]
+        fixture.tracker.snapshots?[200] = windows
+        fixture.model.refresh()
+        fixture.controller.synchronizePanels()
+        #expect(empty.isOrdered)
+        fixture.tracker.snapshots?[200] = []
+        fixture.model.refresh()
+        fixture.controller.synchronizePanels()
+        #expect(!empty.isOrdered)
+        #expect(fixture.controller.isEnabled)
+        #expect(fixture.preferences.reserveSpace)
+        #expect(fixture.factory.latest[200] === empty)
+    }
+
+    @Test("Auto-hide reveal cannot show an empty panel")
+    func cannotRevealEmptyPanel() throws {
+        let fixture = try PanelFixture()
+        defer { fixture.stop() }
+        fixture.preferences.autoHide = true
+        fixture.tracker.activeID = 200
+        fixture.model.spaceDidChange()
+        fixture.controller.reveal()
+        #expect(fixture.factory.latest[200]?.isOrdered == false)
+        #expect(fixture.controller.isEnabled)
+    }
+
+    @Test("An uncached startup displays no panel and does not disable reservation")
+    func unknownStartup() throws {
+        let fixture = try PanelFixture(hasInitialSnapshot: false)
+        defer { fixture.stop() }
+        _ = fixture.controller
+        #expect(fixture.factory.created.isEmpty)
+        #expect(fixture.controller.isEnabled)
+        #expect(fixture.preferences.reserveSpace)
     }
 
     @Test("Global hide/show preserves all panels; quit disposes them and ignores late updates")
@@ -204,7 +250,8 @@ struct DockPanelControllerTests {
         #expect(fixture.factory.created.allSatisfy { !$0.isOrdered && $0.closeCount == 0 })
         fixture.controller.reveal()
         #expect(fixture.factory.created.count == 2)
-        #expect(fixture.factory.created.allSatisfy { $0.isOrdered })
+        #expect(fixture.factory.latest[100]?.isOrdered == true)
+        #expect(fixture.factory.latest[200]?.isOrdered == false)
         fixture.controller.stop()
         fixture.controller.synchronizePanels()
         fixture.controller.updateCurrentSpace()
@@ -233,11 +280,13 @@ private final class PanelFixture {
         makeSurface: { [factory] in factory.make($0) }, report: { _ in }
     )
 
-    init(usePerSpacePanels: Bool = true, style: DockStyle = DockStyle()) throws {
+    init(usePerSpacePanels: Bool = true, style: DockStyle = DockStyle(), hasInitialSnapshot: Bool = true) throws {
         self.usePerSpacePanels = usePerSpacePanels
         defaults = try #require(UserDefaults(suiteName: suite))
         preferences = DockPreferences(defaults: defaults, style: style)
-        tracker.snapshots = [100: [SpaceWindow(id: 1, processID: application.processIdentifier, bounds: CGRect(x: 0, y: 0, width: 800, height: 600))], 200: []]
+        if hasInitialSnapshot {
+            tracker.snapshots = [100: [SpaceWindow(id: 1, processID: application.processIdentifier, bounds: CGRect(x: 0, y: 0, width: 800, height: 600))], 200: []]
+        }
         model.refresh()
     }
 
@@ -251,6 +300,7 @@ private final class PanelTracker: SpaceWindowTracking {
     var usesSkyLight: Bool { snapshots != nil }
     var backendDescription: String { "Fixture" }
     func refresh(regularProcessIDs: Set<Int32>) {}
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64? { activeID }
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? {
         SpaceWindowSelection(spaceID: activeID, windows: snapshots?[activeID] ?? [])
     }

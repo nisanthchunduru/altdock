@@ -18,10 +18,14 @@ final class DockModel: ObservableObject {
 
     var trackingDescription: String { windowTracker.backendDescription }
     var currentSpaceWindows: [SpaceWindow] {
-        guard !isSwitchingSpace, let bounds = displayBounds() else { return [] }
-        return windowTracker.selection(
-            on: bounds, regularProcessIDs: Set(runningApplications().map(\.processIdentifier))
-        )?.windows ?? []
+        guard let bounds = displayBounds() else { return [] }
+        let processIDs = Set(runningApplications().map(\.processIdentifier))
+        if let selection = windowTracker.selection(on: bounds, regularProcessIDs: processIDs),
+           !isSwitchingSpace || selection.spaceID != nil { return selection.windows }
+        return SpaceApplications.windows(
+            from: WindowSnapshot.capture(options: [.optionOnScreenOnly, .excludeDesktopElements]) ?? [],
+            regularProcessIDs: processIDs, excluding: ProcessInfo.processInfo.processIdentifier, on: bounds
+        )
     }
 
     private let displayBounds: () -> CGRect?
@@ -34,6 +38,7 @@ final class DockModel: ObservableObject {
     private var spaceRefresh: DispatchWorkItem?
     private var fallbackReadyAt = Date.distantPast
     private var iconOrders: [UInt64: [Int32]] = [:]
+    private var cachedDisplayBounds: CGRect?
 
     init(
         preferences: DockPreferences,
@@ -113,21 +118,19 @@ final class DockModel: ObservableObject {
         spaceRefresh?.cancel()
         fallbackReadyAt = now().addingTimeInterval(0.4)
         isSwitchingSpace = true
-        if windowTracker.usesSkyLight {
-            _ = publishSelection(running: runningApplications())
-            scheduleRefresh(after: 0)
-        } else {
-            scheduleRefresh(after: 0.08)
-        }
+        _ = publishSelection(running: runningApplications())
+        scheduleRefresh(after: windowTracker.usesSkyLight ? 0 : 0.08)
     }
 
     private func publishAllSpaces(running: [NSRunningApplication]) {
-        guard let bounds = displayBounds(), let selections = windowTracker.allSelections(
-            on: bounds, regularProcessIDs: Set(running.map(\.processIdentifier))
-        ) else {
-            if spaceApplications != nil { spaceApplications = nil }
-            return
+        let bounds = displayBounds()
+        if bounds != cachedDisplayBounds {
+            spaceApplications = nil
+            cachedDisplayBounds = bounds
         }
+        guard let bounds, let selections = windowTracker.allSelections(
+            on: bounds, regularProcessIDs: Set(running.map(\.processIdentifier))
+        ) else { return }
         let byID = Dictionary(uniqueKeysWithValues: running.map { ($0.processIdentifier, $0) })
         var snapshots: [UInt64: [DockApplication]] = [:]
         for (spaceID, windows) in selections {
@@ -150,8 +153,15 @@ final class DockModel: ObservableObject {
         let applicationsByID = Dictionary(uniqueKeysWithValues: running.map { ($0.processIdentifier, $0) })
         guard let selection = windowTracker.selection(
             on: bounds, regularProcessIDs: Set(applicationsByID.keys)
-        ) else { return false }
-        guard selection.spaceID != nil || !isSwitchingSpace || now() >= fallbackReadyAt else { return false }
+        ), selection.spaceID != nil || !isSwitchingSpace || now() >= fallbackReadyAt else {
+            let destination = windowTracker.activeSpaceID(on: bounds)
+            let cached = destination.flatMap { spaceApplications?[$0] } ?? []
+            let available = cached.filter { applicationsByID[$0.id] != nil }
+            if applications.map(\.id) != available.map(\.id) { applications = available }
+            if activeSpaceID != destination { activeSpaceID = destination }
+            if !isSwitchingSpace { isSwitchingSpace = true }
+            return false
+        }
         let orderKey = selection.spaceID ?? 0
         let orderedIDs = SpaceApplications.orderedProcessIDs(
             windows: selection.windows, previousOrder: iconOrders[orderKey, default: []],

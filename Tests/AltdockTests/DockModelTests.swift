@@ -39,7 +39,7 @@ struct DockModelTests {
         #expect(fixture.tracker.refreshCount == 1)
     }
 
-    @Test("An unknown destination preserves the last icons and disables interaction until discovered")
+    @Test("An uncached destination clears the outgoing Space's icons and waits for discovery")
     func waitsForUnknownSpace() {
         let fixture = Fixture()
         defer { fixture.model.stop() }
@@ -48,13 +48,55 @@ struct DockModelTests {
 
         fixture.model.spaceDidChange()
 
-        #expect(fixture.model.applications.count == 1)
+        #expect(fixture.model.applications.isEmpty)
         #expect(fixture.model.isSwitchingSpace)
         fixture.model.activate(fixture.application)
         #expect(fixture.tracker.refreshCount == 1)
         fixture.tracker.current = fixture.selection(spaceID: 300)
         fixture.model.refresh()
         #expect(!fixture.model.isSwitchingSpace)
+    }
+
+    @Test("A destination's cached apps are displayed when its fresh window list is unavailable")
+    func cachedDestinationWhileLoading() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.tracker.snapshots = [100: fixture.selection(spaceID: 100).windows, 200: fixture.selection(spaceID: 200).windows]
+        fixture.model.refresh()
+        fixture.tracker.current = nil
+        fixture.tracker.destination = 200
+        fixture.model.spaceDidChange()
+        #expect(fixture.model.activeSpaceID == 200)
+        #expect(fixture.model.applications.map(\.id) == [fixture.application.processIdentifier])
+        #expect(fixture.model.isSwitchingSpace)
+        #expect(fixture.tracker.refreshCount == 1)
+    }
+
+    @Test("An empty destination cache does not borrow icons from the previous Space")
+    func emptyDestinationCache() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.tracker.snapshots = [100: fixture.selection(spaceID: 100).windows, 200: []]
+        fixture.model.refresh()
+        fixture.tracker.current = nil
+        fixture.tracker.destination = 200
+        fixture.model.spaceDidChange()
+        #expect(fixture.model.activeSpaceID == 200)
+        #expect(fixture.model.applications.isEmpty)
+    }
+
+    @Test("A failed all-Spaces refresh preserves previously cached app lists")
+    func preservesCacheOnReadFailure() {
+        let fixture = Fixture()
+        defer { fixture.model.stop() }
+        fixture.tracker.snapshots = [100: fixture.selection(spaceID: 100).windows]
+        fixture.model.refresh()
+        fixture.tracker.snapshots = nil
+        fixture.tracker.current = nil
+        fixture.tracker.destination = 100
+        fixture.model.refresh()
+        #expect(fixture.model.spaceApplications?[100]?.count == 1)
+        #expect(fixture.model.applications.count == 1)
     }
 
     @Test("An outgoing Space's panel cannot activate an app after the active Space changes")
@@ -79,7 +121,7 @@ struct DockModelTests {
         fixture.model.spaceDidChange()
         fixture.model.refresh()
 
-        #expect(fixture.model.applications.count == 1)
+        #expect(fixture.model.applications.isEmpty)
         #expect(fixture.model.isSwitchingSpace)
         fixture.clock.date = fixture.clock.date.addingTimeInterval(0.5)
         fixture.model.refresh()
@@ -137,8 +179,12 @@ private final class FakeWindowTracker: SpaceWindowTracking {
     var usesSkyLight = true
     var backendDescription: String { "Test cache" }
     var current: SpaceWindowSelection?
+    var destination: UInt64?
+    var snapshots: [UInt64: [SpaceWindow]]?
     var refreshCount = 0
 
     func refresh(regularProcessIDs: Set<Int32>) { refreshCount += 1 }
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64? { destination ?? current?.spaceID }
+    func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { snapshots }
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? { current }
 }

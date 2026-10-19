@@ -12,11 +12,13 @@ protocol SpaceWindowTracking {
     var usesSkyLight: Bool { get }
     var backendDescription: String { get }
     func refresh(regularProcessIDs: Set<Int32>)
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64?
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection?
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]?
 }
 
 extension SpaceWindowTracking {
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64? { nil }
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { nil }
 }
 
@@ -26,9 +28,13 @@ final class SpaceWindowTracker: SpaceWindowTracking {
     private let captureWindows: (CGWindowListOption) -> [SpaceWindow]?
     private(set) var index: SpaceWindowIndex?
     private var onScreenWindows: [SpaceWindow]?
+    private var lastSnapshotSucceeded = false
 
     var usesSkyLight: Bool { index != nil }
-    var backendDescription: String { usesSkyLight ? "SkyLight · All Spaces" : "Public API · On-screen fallback" }
+    var backendDescription: String {
+        guard usesSkyLight else { return "Public API · On-screen fallback" }
+        return lastSnapshotSucceeded ? "SkyLight · All Spaces" : "SkyLight · Cached Spaces (refresh pending)"
+    }
 
     init(usePrivateAPI: Bool = true) {
         spaces = usePrivateAPI ? SkyLightSpaces() : nil
@@ -44,10 +50,15 @@ final class SpaceWindowTracker: SpaceWindowTracking {
         if let snapshot = allSpacesSnapshot(regularProcessIDs: regularProcessIDs) {
             index = snapshot
             onScreenWindows = nil
+            lastSnapshotSucceeded = true
         } else {
-            index = nil
-            onScreenWindows = captureWindows([.optionOnScreenOnly, .excludeDesktopElements])
+            lastSnapshotSucceeded = false
+            if index == nil { onScreenWindows = captureWindows([.optionOnScreenOnly, .excludeDesktopElements]) }
         }
+    }
+
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64? {
+        spaces?.activeSpaceID(on: displayBounds)
     }
 
     func selection(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> SpaceWindowSelection? {

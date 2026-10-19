@@ -20,10 +20,10 @@ struct DockMembershipAnimationTests {
     @Test("Focus updates and repeated snapshots do not restart a resize animation")
     func unchangedMembership() { #expect(!decision(previous: [1, 2], next: [1, 2])) }
 
-    @Test("First and last app changes animate the transition to or from the empty placeholder", arguments: DockEdge.allCases)
+    @Test("First and last app changes show or hide the panel without animating an empty placeholder", arguments: DockEdge.allCases)
     func emptySpaces(_ edge: DockEdge) {
-        #expect(decision(previous: [], next: [1], edge: edge))
-        #expect(decision(previous: [1], next: [], edge: edge))
+        #expect(!decision(previous: [], next: [1], edge: edge))
+        #expect(!decision(previous: [1], next: [], edge: edge))
     }
 
     @Test("Background or auto-hidden panels update immediately instead of replaying animations on reveal")

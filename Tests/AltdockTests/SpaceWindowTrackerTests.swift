@@ -74,6 +74,24 @@ struct SpaceWindowTrackerTests {
         #expect(tracker.allSelections(on: display, regularProcessIDs: [101, 102]) == nil)
     }
 
+    @Test("Transient discovery failures preserve all cached Spaces rather than replacing them with a current-screen list")
+    func retainsCacheDuringDiscoveryFailure() {
+        let spaces = WindowOrderingFixture()
+        var readFails = false
+        let tracker = SpaceWindowTracker(spaces: spaces) { _ in readFails ? nil : [firstBrowser, secondBrowser] }
+        tracker.refresh(regularProcessIDs: [101, 102])
+        readFails = true
+        spaces.active = 300
+        tracker.refresh(regularProcessIDs: [101, 102])
+        #expect(tracker.usesSkyLight)
+        #expect(tracker.selection(on: display, regularProcessIDs: [101, 102])?.windows == [secondBrowser])
+        #expect(tracker.index?.windows(in: 100) == [firstBrowser])
+        readFails = false
+        spaces.ordering[2] = false
+        tracker.refresh(regularProcessIDs: [101, 102])
+        #expect(tracker.index?.windows(in: 300) == [])
+    }
+
     @Test("Unavailable private APIs preserve the existing public on-screen fallback")
     func unavailablePrivateAPI() {
         let tracker = SpaceWindowTracker(spaces: nil) { options in

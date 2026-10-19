@@ -95,7 +95,7 @@ final class WindowReservationController: ObservableObject {
 
     private func makeRequest() -> ReservationRequest? {
         guard preferences.reserveSpace, !preferences.autoHide, dock.isEnabled, hasAccessibility,
-              !model.isSwitchingSpace, let screen = preferences.screen,
+              let screen = preferences.screen,
               let primary = NSScreen.screens.first else { return nil }
         let visible = screen.visibleFrame
         let quartzVisible = CGRect(x: visible.minX, y: primary.frame.maxY - visible.maxY, width: visible.width, height: visible.height)

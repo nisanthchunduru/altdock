@@ -63,6 +63,7 @@ final class NativeDockSurface: DockSurface {
 
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout) {
         if isUpdating || presentation.applications.map(\.id) != applications.map(\.id) || lastLayout != layout { tooltip.hide() }
+        if applications.isEmpty { hide() }
         let animate = DockMembershipAnimation.shouldAnimate(
             previousIDs: presentation.applications.map(\.id), nextIDs: applications.map(\.id),
             previousLayout: lastLayout, nextLayout: layout,
@@ -89,6 +90,7 @@ final class NativeDockSurface: DockSurface {
 
     func show() {
         frameAnimator.reconcile()
+        guard !presentation.applications.isEmpty else { hide(); return }
         guard !isOrdered else { return }
         panel.alphaValue = 1
         panel.orderFrontRegardless()

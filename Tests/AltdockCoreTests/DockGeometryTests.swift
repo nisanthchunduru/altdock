@@ -48,9 +48,9 @@ struct DockGeometryTests {
         #expect(frame.minX == (edge == .left ? 8 : 1350))
     }
 
-    @Test("Empty side docks use a compact icon-sized placeholder")
+    @Test("Empty docks retain only a minimal hidden attachment frame")
     func emptySideDock() {
-        #expect(DockGeometry.contentSize(applicationCount: 0, style: DockStyle(edge: .left)) == CGSize(width: 82, height: 88))
+        #expect(DockGeometry.contentSize(applicationCount: 0, style: DockStyle(edge: .left)) == CGSize(width: 82, height: 24))
     }
 
     @Test("Uses the display bottom instead of the hidden system Dock's old reserved area")

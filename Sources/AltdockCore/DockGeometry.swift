@@ -8,9 +8,7 @@ public enum DockGeometry {
     public static func panelHeight(iconSize: CGFloat) -> CGFloat { iconSize + 18 }
 
     public static func contentSize(applicationCount: Int, style: DockStyle) -> CGSize {
-        let length = applicationCount == 0
-            ? (style.edge.isVertical ? style.iconSize + 24 : 264)
-            : CGFloat(applicationCount) * (style.iconSize + 12) + 18
+        let length = applicationCount == 0 ? 24 : CGFloat(applicationCount) * (style.iconSize + 12) + 18
         return style.edge.isVertical
             ? CGSize(width: style.panelThickness, height: length)
             : CGSize(width: length, height: style.panelThickness)

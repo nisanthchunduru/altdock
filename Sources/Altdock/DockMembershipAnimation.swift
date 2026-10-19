@@ -12,7 +12,7 @@ enum DockMembershipAnimation {
         isSpaceBound: Bool, isOrdered: Bool, isOnActiveSpace: Bool,
         wasUpdating: Bool, isUpdating: Bool, reduceMotion: Bool
     ) -> Bool {
-        guard previousIDs != nextIDs, let previousLayout,
+        guard !previousIDs.isEmpty, !nextIDs.isEmpty, previousIDs != nextIDs, let previousLayout,
               previousLayout.style == nextLayout.style,
               isSpaceBound, isOrdered, isOnActiveSpace,
               !wasUpdating, !isUpdating, !reduceMotion else { return false }

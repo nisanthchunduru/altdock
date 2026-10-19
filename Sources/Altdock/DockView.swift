@@ -26,12 +26,7 @@ struct DockView: View {
 
     var body: some View {
         Group {
-            if presentation.applications.isEmpty && presentation.isUpdating {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityLabel("Updating applications")
-            } else if presentation.applications.isEmpty {
-                emptyState.transition(reduceMotion ? .identity : .opacity)
-            } else if style.edge.isVertical {
+            if style.edge.isVertical {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) { icons }
                         .padding(.vertical, 12)
@@ -66,19 +61,6 @@ struct DockView: View {
         }
     }
 
-    private var emptyState: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "rectangle.bottomthird.inset.filled").font(.title2).foregroundStyle(.secondary)
-            if !style.edge.isVertical {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("A little room to focus.").font(.system(size: 12, weight: .medium))
-                    Text("Open a window in this Space.").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .help("No apps with windows in this Space")
-    }
 }
 
 private struct DockIcon: View {
