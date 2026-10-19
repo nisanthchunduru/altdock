@@ -2,7 +2,7 @@
 
 Productivity-focused MacOS Dock alternative for the AI era.
 
-Altdock is a native macOS menu-bar app with a floating, translucent dock. It shows **only apps with on-screen windows in the active Space on the selected display**—not every running app.
+Altdock is a native macOS menu-bar app with a floating, translucent dock. It shows **apps with windows assigned to the active Space on the selected display**—not every running app. Window membership is cached across all Spaces so switching does not clear and reload the dock.
 
 ## Build and run
 
@@ -21,9 +21,13 @@ For development:
 swift run Altdock
 ./scripts/test.sh
 swift run Altdock --list-current-space
+swift run Altdock --list-spaces
+swift run Altdock --public-windows --list-spaces
 ```
 
-`--list-current-space` prints the detected process IDs and app names without opening the dock. The test script uses Swift Testing and handles the Testing macro-plugin location in newer Command Line Tools. Test-host requirements depend on your toolchain; recent Testing frameworks require macOS 14+.
+`--list-current-space` prints the detected process IDs and app names without opening the dock. `--list-spaces` reports the discovery backend, scan time, active Space, and cached apps across all Spaces. `--public-windows` forces on-screen-only discovery for troubleshooting; it can also be passed when launching the app. The menu reports the current backend.
+
+The test script uses Swift Testing and handles the Testing macro-plugin location in newer Command Line Tools. Test-host requirements depend on your toolchain; recent Testing frameworks require macOS 14+.
 
 ## Using Altdock
 
@@ -39,16 +43,17 @@ Altdock does **not** hide, replace, restart, or modify Apple’s Dock. It sits a
 
 ## Space semantics and permissions
 
-The implementation uses public APIs: `CGWindowListCopyWindowInfo`, `NSWorkspace` notifications, and an `NSPanel` that joins Spaces. It does not use private SkyLight/CGS APIs, take screenshots, inspect window titles, or send data over the network.
+Altdock dynamically loads **private SkyLight APIs**: `SLSCopySpacesForWindows` maps windows to Spaces; `SLSCopyManagedDisplaySpaces` enumerates Spaces; `SLSCopyBestManagedDisplayForRect` and `SLSManagedDisplayGetCurrentSpace` identify the selected display’s active Space. `CGWindowListCopyWindowInfo(.optionAll)` supplies window metadata, including windows on inactive Spaces. No screenshots, window titles, or network access are used.
 
-- Only normal-layer, nontransparent windows belonging to regular applications qualify. Finder appears only when it has a qualifying window, not merely because its desktop is visible.
-- Apps with **only minimized windows**, hidden apps, and apps without windows are omitted. Public window-list APIs do not reliably expose those windows’ Space membership. This is an intentional limitation of this first version, not full parity with Apple’s Dock.
-- “Current Space” is scoped to the **selected display**. Apps visible only on another display are omitted. A window spanning displays can qualify on either. Windows assigned to all desktops qualify wherever visible.
-- Window-list “on-screen” status is supplied by macOS, not a pixel-visibility test; a window covered by another window can still qualify. Stage Manager and Mission Control may affect the list during transitions.
-- Space changes refresh after a short settling delay. App lifecycle events refresh immediately; window open/close/move/minimize changes are detected by a 0.75-second polling timer.
-- **Screen Recording is not requested.** Basic filtering uses process IDs and window geometry, not protected window titles or images.
-- **Accessibility is optional.** “Enable Precise Window Switching…” opens the permission settings. When granted, Altdock tries to raise a current-display window by matching its geometry before activating its app. Without it—or when an app does not expose a matching accessible window—macOS chooses the window and may switch Spaces. Identically positioned windows across Spaces can also make matching ambiguous.
-- The panel is configured to accompany full-screen Spaces, but macOS can suppress auxiliary panels in some full-screen apps. Full-screen and multi-monitor behavior should be verified on your setup.
+- Private APIs are undocumented and may break with macOS updates. Missing symbols or failed snapshot queries fall back to public on-screen discovery. Dynamic loading avoids a hard launch-time dependency, but cannot guarantee compatibility with a changed private ABI. This build is intended for direct distribution, not Mac App Store submission.
+- Only normal-layer, nontransparent windows belonging to regular applications qualify. Windows with no reported Space membership are excluded. Finder appears only when it has a qualifying window, not merely because its desktop is visible.
+- Hidden and minimized windows can qualify when WindowServer still returns their geometry and Space membership. Apps without qualifying windows remain omitted. The public fallback omits hidden and minimized windows because it only knows what is on-screen.
+- “Current Space” is scoped to the **selected display** using both Space membership and window geometry. A window spanning displays can qualify on either if assigned to that display’s active Space. Windows assigned to several Spaces appear in each corresponding list.
+- A 0.75-second timer and app lifecycle notifications reconcile the all-Spaces cache. A Space-change notification selects cached membership immediately, then schedules reconciliation. Existing icons are not cleared first, and their ordering is retained per Space. A newly created/unknown Space keeps the previous icons non-interactive until a snapshot is available; a known empty Space displays the empty state immediately. Caches can briefly lag window moves or closes until reconciliation.
+- Public fallback transitions preserve the previous, non-interactive dock during a 0.4-second grace period, with short retries, rather than showing a misleading empty state. Full scans currently run on the main thread; large window counts may increase refresh cost.
+- **Screen Recording is not requested.** Filtering uses process IDs, window geometry, and Space IDs—not protected window titles or images.
+- **Accessibility is optional.** “Enable Precise Window Switching…” opens the permission settings. When granted, Altdock uses `_AXUIElementGetWindow` when available to match an accessible window by ID, unminimizes it, and raises it before activating the app. Geometry matching is a fallback if that symbol is unavailable. Without a usable accessible window, macOS chooses which window to activate and may switch Spaces; restoration of a particular minimized window is not guaranteed without Accessibility. Hidden apps are unhidden on activation. Clicks re-query membership to avoid acting on stale icons.
+- The panel is configured to accompany full-screen Spaces, but macOS can suppress auxiliary panels in some full-screen apps. Full-screen, Stage Manager, and multi-monitor behavior should be verified on your setup.
 
 ## Project layout
 
@@ -72,3 +77,5 @@ The default ad-hoc signature is for local development; the bundle is not notariz
 - [On-screen window lists](https://developer.apple.com/documentation/coregraphics/cgwindowlistoption/optiononscreenonly)
 - [Active Space notifications](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)
 - [Window collection behavior](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct)
+- [yabai’s private API declarations](https://github.com/koekeishiya/yabai/blob/master/src/misc/extern.h)
+- [yabai’s window-to-Space queries](https://github.com/koekeishiya/yabai/blob/master/src/window.c)

@@ -10,7 +10,11 @@ struct DockView: View {
 
     var body: some View {
         Group {
-            if model.applications.isEmpty {
+            if model.applications.isEmpty && model.isSwitchingSpace {
+                ProgressView().controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityLabel("Updating applications")
+            } else if model.applications.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "rectangle.bottomthird.inset.filled")
                         .font(.title2)
@@ -31,9 +35,7 @@ struct DockView: View {
                                 application: application,
                                 isActive: model.activeProcessID == application.id,
                                 size: iconSize,
-                                activate: {
-                                    ApplicationActivator.activate(application.application, on: preferences.screen)
-                                }
+                                activate: { model.activate(application.application) }
                             )
                         }
                     }
@@ -43,6 +45,7 @@ struct DockView: View {
                 }
             }
         }
+        .disabled(model.isSwitchingSpace)
         .background(DockMaterial())
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {

@@ -8,6 +8,7 @@ let package = Package(
     targets: [
         .target(name: "AltdockCore"),
         .executableTarget(name: "Altdock", dependencies: ["AltdockCore"]),
-        .testTarget(name: "AltdockCoreTests", dependencies: ["AltdockCore"])
+        .testTarget(name: "AltdockCoreTests", dependencies: ["AltdockCore"]),
+        .testTarget(name: "AltdockTests", dependencies: ["Altdock", "AltdockCore"])
     ]
 )

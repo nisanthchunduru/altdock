@@ -8,9 +8,11 @@
 codesign --verify --strict --verbose=2 dist/Altdock.app
 plutil -lint Resources/Info.plist
 dist/Altdock.app/Contents/MacOS/Altdock --list-current-space
+dist/Altdock.app/Contents/MacOS/Altdock --list-spaces
+dist/Altdock.app/Contents/MacOS/Altdock --public-windows --list-spaces
 ```
 
-The core suites cover current-display filtering, off-screen exclusion, window-layer and transparency filtering, self/agent exclusion, deduplication, stable ordering, empty Spaces, negative display coordinates, icon sizing, overflow, and avoiding the system Dock.
+The core suites cover current-display filtering, off-screen exclusion in the public fallback, all-Spaces indexing (including shared and unvisited Spaces), window eligibility, deduplication, stable ordering, empty/unknown Spaces, negative display coordinates, and dock geometry. Native model tests use a fake tracker and clock to verify synchronous cached switches, absence of artificial empty publications, unknown-Space interaction blocking, rapid switches, and fallback settling. Dynamic loader tests cover missing frameworks and symbols.
 
 These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed.
 
@@ -18,11 +20,13 @@ These are deterministic unit tests, not proof of macOS Space reporting or permis
 
 ### Current Space
 
-- [ ] Open different apps on two Spaces. Switch Spaces: only apps with qualifying windows on the dock’s display appear after the transition settles.
+- [ ] Run `--list-spaces`: the backend is SkyLight and apps from inactive Spaces are already listed, without visiting those Spaces.
+- [ ] Open different apps on two Spaces. Switch Spaces: cached icons replace the previous list without flashing the empty-state message or resizing to its width.
+- [ ] Create a new Space and switch to it immediately: an unknown destination does not temporarily claim to be empty. A confirmed empty destination does show the empty state.
 - [ ] Open two windows from one app: there is one icon. Changing window stacking order does not reorder existing icons.
 - [ ] Move the last window for an app to another Space: its icon disappears.
-- [ ] Minimize the last window, hide the app, and quit the app in separate checks: each removes the icon. Restoring a qualifying window brings it back.
-- [ ] Cover a window with another app: check macOS still reports the covered window as on-screen.
+- [ ] Minimize the last window and hide its app: verify membership against `--list-spaces`. If WindowServer retains that window’s membership, its icon stays. Quitting removes the icon.
+- [ ] Cover a window with another app: its Space membership remains valid.
 - [ ] Visit an empty Space: the empty-state message appears, not stale icons.
 - [ ] Switch Spaces rapidly and during launch/termination: old-Space icons do not persist.
 - [ ] Use Mission Control and Stage Manager; check membership again after leaving their transition states.
@@ -30,10 +34,16 @@ These are deterministic unit tests, not proof of macOS Space reporting or permis
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.
-- [ ] Give one app windows in multiple Spaces. Enable Accessibility, then click it from each Space: check whether the local window is raised. Repeat with identical window geometries to evaluate the documented ambiguity.
+- [ ] Give one app windows in multiple Spaces. Enable Accessibility, then click it from each Space: check that the local window is raised, including identical window geometries and minimized windows.
 - [ ] Deny Accessibility: filtering still works; switching falls back to standard macOS activation without repeatedly prompting.
 - [ ] Open the context menu: Open, Hide, and Quit behave normally. Quit an app with unsaved work and confirm its save prompt is respected.
 - [ ] Close a window immediately before clicking its stale icon: Altdock does not launch another instance or restore unrelated windows.
+
+### Fallback and private-API compatibility
+
+- [ ] Quit Altdock and launch `open dist/Altdock.app --args --public-windows`: the menu reports on-screen fallback, transitions preserve the dock while settling, and hidden/minimized-only apps are omitted.
+- [ ] Relaunch without that argument: the menu returns to SkyLight when available.
+- [ ] Validate the all-Spaces backend after macOS upgrades. Missing symbols or failed reads should fall back, not prevent launch. A changed private ABI still requires compatibility testing.
 
 ### Presentation and settings
 

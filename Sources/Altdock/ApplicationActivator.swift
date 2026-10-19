@@ -4,16 +4,17 @@ import AppKit
 
 @MainActor
 enum ApplicationActivator {
-    static func activate(_ application: NSRunningApplication, on screen: NSScreen?) {
-        guard !application.isTerminated, let screen else { return }
-        let currentWindows = SpaceApplications.windows(
-            from: WindowSnapshot.current(), regularProcessIDs: [application.processIdentifier],
-            excluding: ProcessInfo.processInfo.processIdentifier,
-            on: CGDisplayBounds(screen.displayID)
-        )
-        guard !currentWindows.isEmpty else { return }
+    private typealias CopyWindowID = @convention(c) (AXUIElement, UnsafeMutablePointer<UInt32>) -> Int32
+    private static let accessibilityLibrary = DynamicLibrary(
+        path: "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
+    )
+    private static let copyWindowID = accessibilityLibrary?.symbol("_AXUIElementGetWindow", as: CopyWindowID.self)
 
+    static func activate(_ application: NSRunningApplication, matching currentWindows: [SpaceWindow]) {
+        guard !application.isTerminated, !currentWindows.isEmpty else { return }
+        application.unhide()
         if AXIsProcessTrusted(), let window = accessibilityWindow(for: application, matching: currentWindows) {
+            AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         }
@@ -35,14 +36,22 @@ enum ApplicationActivator {
               let accessibleWindows = value as? [AXUIElement] else { return nil }
 
         for window in windows {
-            if let match = accessibleWindows.first(where: { matches($0, bounds: window.bounds) }) {
+            if let match = accessibleWindows.first(where: { matches($0, window: window) }) {
                 return match
             }
         }
         return nil
     }
 
-    private static func matches(_ window: AXUIElement, bounds: CGRect) -> Bool {
+    private static func matches(_ element: AXUIElement, window: SpaceWindow) -> Bool {
+        if let copyWindowID {
+            var identifier: UInt32 = 0
+            return copyWindowID(element, &identifier) == 0 && identifier == window.id
+        }
+        return matchesGeometry(element, bounds: window.bounds)
+    }
+
+    private static func matchesGeometry(_ window: AXUIElement, bounds: CGRect) -> Bool {
         var positionValue: CFTypeRef?
         var sizeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,

@@ -26,6 +26,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         let heading = NSMenuItem(title: "Altdock · Current Space", action: nil, keyEquivalent: "")
         menu.addItem(heading)
+        menu.addItem(NSMenuItem(title: model.trackingDescription, action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         addItem(dock.isEnabled ? "Hide Altdock" : "Show Altdock", action: #selector(toggleDock), to: menu)
         addItem("Automatically Hide", action: #selector(toggleAutoHide), checked: preferences.autoHide, to: menu)
@@ -113,7 +114,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc func showAbout() {
         let alert = NSAlert()
         alert.messageText = "Altdock"
-        alert.informativeText = "Your Space. Your apps. Less noise.\n\nAltdock shows apps with non-minimized windows in the active Space on the selected display. Click to switch; right-click for Open, Hide, and Quit.\n\nUse the menu-bar icon for size, display, auto-hide, and login settings. Optional Accessibility access helps focus the current-Space window when an app spans multiple Spaces.\n\nAltdock never changes Apple’s Dock settings. For more room, enable automatically hiding the system Dock in System Settings → Desktop & Dock."
+        alert.informativeText = "Your Space. Your apps. Less noise.\n\nAltdock caches window membership across Spaces using private SkyLight APIs, with an on-screen-only fallback. Click to switch; right-click for Open, Hide, and Quit.\n\nUse the menu-bar icon for size, display, auto-hide, and login settings. Optional Accessibility access helps restore and focus the current-Space window when an app spans multiple Spaces.\n\nAltdock never changes Apple’s Dock settings. For more room, enable automatically hiding the system Dock in System Settings → Desktop & Dock."
         alert.addButton(withTitle: "Got It")
         alert.runModal()
     }

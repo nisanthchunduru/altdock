@@ -2,10 +2,9 @@ import AltdockCore
 import AppKit
 
 enum WindowSnapshot {
-    static func current() -> [SpaceWindow] {
-        guard let descriptions = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]] else { return [] }
+    static func capture(options: CGWindowListOption) -> [SpaceWindow]? {
+        guard let descriptions = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
+            as? [[String: Any]] else { return nil }
 
         return descriptions.compactMap { description in
             guard let id = description[kCGWindowNumber as String] as? UInt32,

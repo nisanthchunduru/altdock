@@ -27,10 +27,11 @@ public enum SpaceApplications {
         from windows: [SpaceWindow],
         regularProcessIDs: Set<Int32>,
         excluding ownProcessID: Int32,
-        on displayBounds: CGRect
+        on displayBounds: CGRect,
+        requiringOnScreen: Bool = true
     ) -> [SpaceWindow] {
         windows.filter { window in
-            window.isOnScreen && window.layer == 0 && window.alpha > 0
+            (!requiringOnScreen || window.isOnScreen) && window.layer == 0 && window.alpha > 0
                 && window.processID != ownProcessID
                 && regularProcessIDs.contains(window.processID)
                 && window.bounds.width > 1 && window.bounds.height > 1
