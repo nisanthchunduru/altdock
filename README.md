@@ -99,7 +99,7 @@ Resources/Info.plist  Menu-bar app bundle metadata
 scripts/              Build, icon generation, and test commands
 ```
 
-See [PRODUCT.md](PRODUCT.md) for the initial product requirements, [RESEARCH.ai.md](RESEARCH.ai.md) for the source review and engineering decisions, and [TESTING.md](TESTING.md) for the manual acceptance checklist.
+See [REQUIREMENTS.md](REQUIREMENTS.md) for the initial product requirements, [RESEARCH.ai.md](RESEARCH.ai.md) for the source review and engineering decisions, and [TESTING.md](TESTING.md) for the manual acceptance checklist.
 
 ## Signing and distribution
 
