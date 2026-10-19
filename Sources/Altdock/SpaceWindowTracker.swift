@@ -22,7 +22,8 @@ extension SpaceWindowTracking {
 
 @MainActor
 final class SpaceWindowTracker: SpaceWindowTracking {
-    private let spaces: SkyLightSpaces?
+    private let spaces: (any SpaceQuerying)?
+    private let captureWindows: (CGWindowListOption) -> [SpaceWindow]?
     private(set) var index: SpaceWindowIndex?
     private var onScreenWindows: [SpaceWindow]?
 
@@ -31,6 +32,12 @@ final class SpaceWindowTracker: SpaceWindowTracking {
 
     init(usePrivateAPI: Bool = true) {
         spaces = usePrivateAPI ? SkyLightSpaces() : nil
+        captureWindows = WindowSnapshot.capture
+    }
+
+    init(spaces: (any SpaceQuerying)?, captureWindows: @escaping (CGWindowListOption) -> [SpaceWindow]?) {
+        self.spaces = spaces
+        self.captureWindows = captureWindows
     }
 
     func refresh(regularProcessIDs: Set<Int32>) {
@@ -39,7 +46,7 @@ final class SpaceWindowTracker: SpaceWindowTracking {
             onScreenWindows = nil
         } else {
             index = nil
-            onScreenWindows = WindowSnapshot.capture(options: [.optionOnScreenOnly, .excludeDesktopElements])
+            onScreenWindows = captureWindows([.optionOnScreenOnly, .excludeDesktopElements])
         }
     }
 
@@ -82,7 +89,7 @@ final class SpaceWindowTracker: SpaceWindowTracking {
 
     private func allSpacesSnapshot(regularProcessIDs: Set<Int32>) -> SpaceWindowIndex? {
         guard let spaces, let spaceIDs = spaces.allSpaceIDs(),
-              let windows = WindowSnapshot.capture(options: [.optionAll, .excludeDesktopElements]) else { return nil }
+              let windows = captureWindows([.optionAll, .excludeDesktopElements]) else { return nil }
         let candidates = SpaceApplications.windows(
             from: windows, regularProcessIDs: regularProcessIDs,
             excluding: ProcessInfo.processInfo.processIdentifier,
@@ -90,6 +97,8 @@ final class SpaceWindowTracker: SpaceWindowTracking {
         )
         var membership: [UInt32: Set<UInt64>] = [:]
         for window in candidates {
+            guard let isOrderedIn = spaces.isWindowOrderedIn(window.id) else { return nil }
+            guard isOrderedIn else { continue }
             guard let identifiers = spaces.spaceIDs(for: window.id) else { return nil }
             membership[window.id] = identifiers
         }

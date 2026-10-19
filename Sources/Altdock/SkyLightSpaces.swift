@@ -2,12 +2,22 @@ import CoreGraphics
 import Foundation
 
 @MainActor
-final class SkyLightSpaces {
+protocol SpaceQuerying {
+    func spaceIDs(for windowID: UInt32) -> Set<UInt64>?
+    func allSpaceIDs() -> Set<UInt64>?
+    func spaceIDs(on displayBounds: CGRect) -> Set<UInt64>?
+    func activeSpaceID(on displayBounds: CGRect) -> UInt64?
+    func isWindowOrderedIn(_ windowID: UInt32) -> Bool?
+}
+
+@MainActor
+final class SkyLightSpaces: SpaceQuerying {
     private typealias MainConnection = @convention(c) () -> Int32
     private typealias CopyWindowSpaces = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
     private typealias CopyDisplaySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
     private typealias CopyDisplayIdentifier = @convention(c) (Int32, CGRect) -> Unmanaged<CFString>?
     private typealias CurrentSpace = @convention(c) (Int32, CFString) -> UInt64
+    private typealias WindowIsOrderedIn = @convention(c) (Int32, UInt32, UnsafeMutablePointer<UInt8>) -> Int32
 
     private let library: DynamicLibrary
     private let connection: Int32
@@ -15,6 +25,7 @@ final class SkyLightSpaces {
     private let copyDisplaySpaces: CopyDisplaySpaces
     private let copyDisplayIdentifier: CopyDisplayIdentifier
     private let currentSpace: CurrentSpace
+    private let windowIsOrderedIn: WindowIsOrderedIn
 
     init?() {
         guard let library = DynamicLibrary(path: "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"),
@@ -22,7 +33,8 @@ final class SkyLightSpaces {
               let copyWindowSpaces = library.symbol("SLSCopySpacesForWindows", as: CopyWindowSpaces.self),
               let copyDisplaySpaces = library.symbol("SLSCopyManagedDisplaySpaces", as: CopyDisplaySpaces.self),
               let copyDisplayIdentifier = library.symbol("SLSCopyBestManagedDisplayForRect", as: CopyDisplayIdentifier.self),
-              let currentSpace = library.symbol("SLSManagedDisplayGetCurrentSpace", as: CurrentSpace.self)
+              let currentSpace = library.symbol("SLSManagedDisplayGetCurrentSpace", as: CurrentSpace.self),
+              let windowIsOrderedIn = library.symbol("SLSWindowIsOrderedIn", as: WindowIsOrderedIn.self)
         else { return nil }
         self.library = library
         connection = mainConnection()
@@ -30,6 +42,13 @@ final class SkyLightSpaces {
         self.copyDisplaySpaces = copyDisplaySpaces
         self.copyDisplayIdentifier = copyDisplayIdentifier
         self.currentSpace = currentSpace
+        self.windowIsOrderedIn = windowIsOrderedIn
+    }
+
+    func isWindowOrderedIn(_ windowID: UInt32) -> Bool? {
+        var ordered: UInt8 = 0
+        guard windowIsOrderedIn(connection, windowID, &ordered) == CGError.success.rawValue else { return nil }
+        return ordered != 0
     }
 
     func spaceIDs(for windowID: UInt32) -> Set<UInt64>? {

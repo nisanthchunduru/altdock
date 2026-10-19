@@ -168,6 +168,14 @@ Layout, indicators, auto-hide zones, and reservation use the captured bottom/lef
 
 Pure tests cover all edges, native icon sizes 16–128, active/inactive indicators, and varied footprints. Pixel-based SwiftUI ImageRenderer tests use a synthetic solid sRGB icon for bottom/left/right at 1x and 2x scales. An initial fixture used DeviceRGB, which color-managed red into orange on this machine and broke red-pixel detection; explicitly using sRGB for both generation and read-back fixed the test, not the layout. No user screenshot is necessary for these deterministic checks. Artwork inside an app-supplied icon may itself have asymmetric transparent padding; the icon's image box, not its visual center of mass, is centered.
 
+## Ordered-out auxiliary windows and phantom Chrome icons
+
+Native investigation found two separate Chrome processes with retained ~400×84 windows on the affected Desktop. They had normal layer, alpha=1, plausible bounds and valid Space membership, but `SLSWindowIsOrderedIn` reported false. Their actual browser windows reported ordered-in on other Spaces. The panel assignments were correct; the phantom icons arose because the all-Spaces scan only checked geometry/layer/alpha/membership. Two PIDs account for the two icons, not duplicate copies of one PID.
+
+`SkyLightSpaces` now resolves `SLSWindowIsOrderedIn(int connection, uint32 windowID, uint8_t *out) -> CGError`, returning nil on failure. `SpaceWindowTracker` skips confirmed ordered-out candidates before fetching their membership. A missing API or failed ordering read uses the existing on-screen fallback rather than guessing. Ordered-in windows on inactive Spaces remain eligible (`isOnScreen=false` does not imply ordered-out). There is no hard-coded Chrome filter, minimum-height workaround, or bundle-ID deduplication.
+
+This deliberately excludes all ordered-out windows for now; genuine hidden/minimized windows may also be omitted. Explicit AX recognition of those window types is a separate enhancement, not part of this fix. Tests inject Space/order queries and snapshots into the real tracker to cover phantom helpers, inactive ordered windows, small legitimate ordered windows, order changes, shared/all-desktop membership, query failures, and unavailable private APIs. Desktop labels must be mapped by the order of `SLSCopyManagedDisplaySpaces`'s Spaces array, not sorted numeric IDs.
+
 ## Verification priorities
 
 Test geometry in Quartz's top-left coordinate system, including negative monitor coordinates and system Dock/menu-bar insets; known/unknown Spaces; loop suppression; manual overrides; restoration guards; fixed-size/minimum-size apps; missing permissions; default-enabled migration; and preference backup/apply/restore failures. Native acceptance must cover Mission Control, full screen, multi-monitor arrangements, app/tiling-manager conflicts, normal quit, force quit, and restart. Unit tests are not proof of behavior in every third-party app.

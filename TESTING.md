@@ -34,11 +34,18 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Create a new Space and switch to it immediately: an unknown destination does not temporarily claim to be empty. A confirmed empty destination does show the empty state.
 - [ ] Open two windows from one app: there is one icon. Changing window stacking order does not reorder existing icons.
 - [ ] Move the last window for an app to another Space: its icon disappears.
-- [ ] Minimize the last window and hide its app: verify membership against `--list-spaces`. If WindowServer retains that window’s membership, its icon stays. Quitting removes the icon.
+- [ ] Minimize the last window and hide its app: verify the icon disappears if WindowServer orders the window out. Space membership alone no longer keeps an ordered-out window's app in the dock. Quitting removes the icon.
 - [ ] Cover a window with another app: its Space membership remains valid.
 - [ ] Visit an empty Space: the empty-state message appears, not stale icons.
 - [ ] Switch Spaces rapidly and during launch/termination: old-Space icons do not persist.
 - [ ] Use Mission Control and Stage Manager; check membership again after leaving their transition states.
+
+### Ordered-in window eligibility
+
+- [ ] With two Chrome instances whose real browser windows are on other Desktops, confirm their retained ordered-out helper windows no longer generate Chrome icons on an otherwise Chrome-free Desktop.
+- [ ] Run `--list-spaces` without visiting other Desktops: their ordered-in browser windows must still be cached. Switching there should reveal the correct icons without a new on-screen-only discovery delay.
+- [ ] Create a small but ordered-in normal window: it must still qualify. No minimum-height workaround should suppress legitimate small windows.
+- [ ] Hide/restore or close/reopen a window: membership updates with ordering state. Genuine ordered-out minimized/hidden windows are currently omitted, pending explicit AX support.
 
 ### Persistent Space-bound panels
 
