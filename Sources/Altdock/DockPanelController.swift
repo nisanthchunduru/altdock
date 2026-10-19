@@ -40,7 +40,9 @@ final class DockPanelController: ObservableObject {
         } else {
             let placement = SpacePanelPlacement()
             self.makeSurface = { [weak model] spaceID in
-                NativeDockSurface(spaceID: spaceID, placement: placement) { [weak model] application in
+                NativeDockSurface(spaceID: spaceID, placement: placement, moveWindows: spaceID.map { source in
+                    { [weak model] application, destination in model?.moveWindows(of: application, from: source, to: destination) }
+                }) { [weak model] application in
                     model?.activate(application, expectedSpaceID: spaceID)
                 }
             }
@@ -49,6 +51,8 @@ final class DockPanelController: ObservableObject {
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
         model.$fullScreenSpaceIDs.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
+        model.$desktopDestinations.combineLatest(model.$isMovingWindows).receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateMoveDestinations() }.store(in: &subscriptions)
         model.$applications.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
         model.$activeProcessID.combineLatest(model.$activeSpaceID, model.$isSwitchingSpace)
@@ -119,7 +123,15 @@ final class DockPanelController: ObservableObject {
                 surfaces[id] = surface
             }
         }
+        updateMoveDestinations()
         updateCurrentSpace()
+    }
+
+    private func updateMoveDestinations() {
+        guard !stopped else { return }
+        for (source, surface) in surfaces {
+            surface.updateDestinations(model.isMovingWindows ? [] : model.desktopDestinations.filter { $0.id != source })
+        }
     }
 
     func updateCurrentSpace() {

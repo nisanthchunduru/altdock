@@ -16,6 +16,8 @@ final class DockModel: ObservableObject {
     @Published private(set) var activeSpaceID: UInt64?
     @Published private(set) var spaceApplications: [UInt64: [DockApplication]]?
     @Published private(set) var fullScreenSpaceIDs: Set<UInt64> = []
+    @Published private(set) var desktopDestinations: [DesktopDestination] = []
+    @Published private(set) var isMovingWindows = false
 
     var isFullScreenSpaceActive: Bool { activeSpaceID.map { fullScreenSpaceIDs.contains($0) } ?? false }
     var trackingDescription: String { windowTracker.backendDescription }
@@ -30,6 +32,8 @@ final class DockModel: ObservableObject {
         )
     }
 
+    private let windowMover: DesktopWindowMover
+    private var moveTask: Task<Void, Never>?
     private let displayBounds: () -> CGRect?
     private let windowTracker: any SpaceWindowTracking
     private let runningApplications: () -> [NSRunningApplication]
@@ -44,6 +48,7 @@ final class DockModel: ObservableObject {
 
     init(
         preferences: DockPreferences,
+        windowMover: DesktopWindowMover = DesktopWindowMover(),
         windowTracker: any SpaceWindowTracking = SpaceWindowTracker(),
         runningApplications: @escaping () -> [NSRunningApplication] = {
             NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
@@ -54,6 +59,7 @@ final class DockModel: ObservableObject {
             ApplicationActivator.activate($0, matching: $1)
         }
     ) {
+        self.windowMover = windowMover
         self.displayBounds = displayBounds ?? { preferences.screen.map { CGDisplayBounds($0.displayID) } }
         self.windowTracker = windowTracker
         self.runningApplications = runningApplications
@@ -93,6 +99,7 @@ final class DockModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         spaceRefresh?.cancel()
+        moveTask?.cancel()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
     }
@@ -100,6 +107,8 @@ final class DockModel: ObservableObject {
     func refresh() {
         let running = runningApplications()
         refreshFullScreenSpaces()
+        let destinations = displayBounds().map { windowMover.isAvailable ? windowMover.desktops(on: $0) : [] } ?? []
+        if destinations != desktopDestinations { desktopDestinations = destinations }
         windowTracker.refresh(regularProcessIDs: Set(running.map(\.processIdentifier)))
         publishAllSpaces(running: running)
         if !publishSelection(running: running), isSwitchingSpace, now() < fallbackReadyAt {
@@ -115,6 +124,22 @@ final class DockModel: ObservableObject {
         else { return }
         guard expectedSpaceID == nil || selection.spaceID == expectedSpaceID else { return }
         activateApplication(application, selection.windows.filter { $0.processID == application.processIdentifier })
+    }
+
+    func moveWindows(of application: NSRunningApplication, from source: UInt64, to destination: UInt64) {
+        guard !isMovingWindows, !isSwitchingSpace, !isFullScreenSpaceActive,
+              !application.isTerminated, let bounds = displayBounds() else { return }
+        isMovingWindows = true
+        moveTask = Task {
+            defer { isMovingWindows = false; if !Task.isCancelled { refresh() } }
+            do {
+                _ = try await windowMover.move(processID: application.processIdentifier, from: source, to: destination, on: bounds)
+            } catch is CancellationError {
+                return
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
     }
 
     func spaceDidChange() {

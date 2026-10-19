@@ -1,3 +1,4 @@
+import AltdockCore
 import CoreGraphics
 import Foundation
 
@@ -9,9 +10,11 @@ protocol SpaceQuerying {
     func activeSpaceID(on displayBounds: CGRect) -> UInt64?
     func isWindowOrderedIn(_ windowID: UInt32) -> Bool?
     func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>?
+    func desktops(on displayBounds: CGRect) -> [DesktopDestination]?
 }
 
 extension SpaceQuerying {
+    func desktops(on displayBounds: CGRect) -> [DesktopDestination]? { nil }
     func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { nil }
 }
 
@@ -101,6 +104,18 @@ final class SkyLightSpaces: SpaceQuerying {
             if type.intValue == 4 { fullScreenIDs.insert(id.uint64Value) }
         }
         return fullScreenIDs
+    }
+
+    func desktops(on displayBounds: CGRect) -> [DesktopDestination]? {
+        guard let entries = displaySpaces(on: displayBounds) else { return nil }
+        var desktops: [DesktopDestination] = []
+        for entry in entries {
+            guard let id = entry["ManagedSpaceID"] as? NSNumber, let type = entry["type"] as? NSNumber else { return nil }
+            if type.intValue == 0 {
+                desktops.append(DesktopDestination(id: id.uint64Value, number: desktops.count + 1))
+            }
+        }
+        return desktops
     }
 
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? {

@@ -216,6 +216,16 @@ Do not infer full screen from a single app, window dimensions, or the name Zoom:
 
 A native probe opened only its own NSWindow in full-screen mode. The running Altdock reported `Dock hidden in full-screen Space`, zero panels assigned to the new full-screen Space, `Reservation paused in full-screen Space`, and WindowServer reported zero on-screen Altdock windows. Closing the test window returned to ordinary-Desktop behavior with reservation active again. No other app's window was toggled or resized by the probe.
 
+## Move the selected app's current-Desktop windows
+
+`DesktopWindowMover` implements an explicit user action from the icon context menu. Destinations come from ordinary (`type == 0`) managed Spaces on the selected display, in their reported order; numeric Space IDs are not desktop ordinals. Per-Space surfaces capture their source ID and pass it with the destination and selected app process. Shared fallback panels do not offer moves.
+
+Before submitting, the service checks the live active/source/destination topology, takes a fresh window snapshot, filters the selected PID/display and existing eligibility criteria, and requires ordered-in status plus exclusive membership in the source Space. Windows on other Spaces, shared/all-Desktop windows, ordered-out windows, and other processes are excluded. Cancellation/source changes before submission cause no writes. After one request, up to 15 short asynchronous polls verify destination membership. Partial/failure counts are surfaced without retries or rollback; model caches refresh afterward. Pinning remains reverted.
+
+On macOS 26.7.1, a two-process native probe found `SLSMoveWindowsToManagedSpace` did not move the other process's test window, while `SLSBridgedMoveWindowsToManagedSpaceOperation` with `initWithWindows:spaceID:` and `performWithWMBridgeDelegate` did. `DesktopMoveBridge` dynamically checks this class/selectors; it is separate from own-panel placement. Relevant interface reference: [DockDoor PrivateApis.swift](https://github.com/ejbills/DockDoor/blob/77e4771d38cf69dc24f2f76c74a73e61fab54571/DockDoor/Utilities/PrivateApis.swift#L179-L215). The bridge follows the discovered interface, not copied application logic. No scripting addition or security change is installed.
+
+A second native probe using the actual new service moved a separate test process's window, verified its target membership, and confirmed the active Desktop remained unchanged. Tests use synthetic window data and a fake bridge to cover scope, source/destination changes, unknown membership, no-window/unsupported cases, bounded verification, and partial success. The real probe opened/closed only its own disposable window, not user app windows.
+
 ## Verification priorities
 
 Test geometry in Quartz's top-left coordinate system, including negative monitor coordinates and system Dock/menu-bar insets; known/unknown Spaces; loop suppression; manual overrides; restoration guards; fixed-size/minimum-size apps; missing permissions; default-enabled migration; and preference backup/apply/restore failures. Native acceptance must cover Mission Control, full screen, multi-monitor arrangements, app/tiling-manager conflicts, normal quit, force quit, and restart. Unit tests are not proof of behavior in every third-party app.

@@ -8,6 +8,7 @@ struct DockView: View {
     @ObservedObject var presentation: DockPresentation
     let tooltip: DockTooltipController
     let activate: (NSRunningApplication) -> Void
+    var moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil
 
     private var style: DockStyle { presentation.style }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -52,7 +53,7 @@ struct DockView: View {
 
     private var icons: some View {
         ForEach(presentation.applications) { application in
-            DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style) {
+            DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style, destinations: presentation.destinations, moveWindows: moveWindows) {
                 tooltip.hide()
                 activate(application.application)
             }
@@ -67,6 +68,8 @@ private struct DockIcon: View {
     let application: DockApplication
     let isActive: Bool
     let style: DockStyle
+    let destinations: [DesktopDestination]
+    let moveWindows: ((NSRunningApplication, UInt64) -> Void)?
     let activate: () -> Void
     @DockViewState private var isHovered = false
 
@@ -86,6 +89,11 @@ private struct DockIcon: View {
             Text(application.name)
             Divider()
             Button("Open", action: activate)
+            Menu("Move to") {
+                ForEach(destinations) { destination in
+                    Button(destination.name) { moveWindows?(application.application, destination.id) }
+                }
+            }.disabled(moveWindows == nil || destinations.isEmpty)
             Button("Hide") { application.application.hide() }
             Divider()
             Button("Quit") { application.application.terminate() }

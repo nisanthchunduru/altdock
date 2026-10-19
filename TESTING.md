@@ -63,6 +63,15 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] For A/B comparison, quit and run `open dist/Altdock.app --args --shared-panel`; relaunch without the argument to restore the prototype. This uses the same signed binary and needs no re-signing.
 - [ ] Verify stale clicks from an outgoing panel do not activate an app after changing Spaces.
 
+### Moving windows between Desktops
+
+- [ ] Right-click an app → Move to. Labels follow Mission Control's current Desktop order, omit the source, and exclude full-screen Spaces.
+- [ ] Give the app windows on multiple Desktops. Move from one: only that source's eligible windows move. Other processes/apps, windows on other Desktops/displays, ordered-out windows, and all-Desktop windows remain unchanged.
+- [ ] Verify the active Desktop stays unchanged and icons update on source/destination panels after the move.
+- [ ] Delete/reorder a Desktop or switch Spaces while the menu is open: stale source/destination actions must not move unrelated windows.
+- [ ] When macOS refuses some windows, an error reports the moved count. Do not repeatedly move or automatically roll back already moved windows.
+- [ ] Shared-panel fallback and unavailable private backend must disable the move submenu. Quit during verification must stop polling without altering additional windows.
+
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.

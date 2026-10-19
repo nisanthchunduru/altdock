@@ -1,3 +1,4 @@
+import AltdockCore
 import AppKit
 import SwiftUI
 
@@ -9,10 +10,15 @@ protocol DockSurface: AnyObject {
     var windowNumber: Int { get }
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout)
     func updateFocus(_ processID: Int32?)
+    func updateDestinations(_ destinations: [DesktopDestination])
     func attach(to spaceID: UInt64) -> Bool
     func show()
     func hide()
     func close()
+}
+
+extension DockSurface {
+    func updateDestinations(_ destinations: [DesktopDestination]) {}
 }
 
 private final class DockPanel: NSPanel {
@@ -35,7 +41,7 @@ final class NativeDockSurface: DockSurface {
     var isKeyWindow: Bool { panel.isKeyWindow }
     var windowNumber: Int { panel.windowNumber }
 
-    init(spaceID: UInt64?, placement: SpacePanelPlacement, activate: @escaping (NSRunningApplication) -> Void) {
+    init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {
         self.placement = placement
         isSpaceBound = spaceID != nil
         panel = DockPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -56,7 +62,7 @@ final class NativeDockSurface: DockSurface {
         panel.isExcludedFromWindowsMenu = true
         panel.animationBehavior = .none
         panel.alphaValue = 0
-        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate))
+        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate, moveWindows: moveWindows))
         hostingView.sizingOptions = []
         panel.contentView = hostingView
     }
@@ -81,6 +87,8 @@ final class NativeDockSurface: DockSurface {
         if frameChanged { frameAnimator.move(to: layout.frame, animated: animate) }
         else { frameAnimator.reconcile() }
     }
+
+    func updateDestinations(_ destinations: [DesktopDestination]) { presentation.updateDestinations(destinations) }
 
     func updateFocus(_ processID: Int32?) {
         frameAnimator.reconcile()

@@ -7,12 +7,17 @@ final class DockPresentation: ObservableObject {
     @Published private(set) var activeProcessID: Int32?
     @Published private(set) var isUpdating = false
     @Published private(set) var style = DockStyle()
+    @Published private(set) var destinations: [DesktopDestination] = []
     var iconSize: CGFloat { style.iconSize }
 
     func update(applications: [DockApplication], isUpdating: Bool, style: DockStyle) {
         if self.applications.map(\.id) != applications.map(\.id) { self.applications = applications }
         if self.isUpdating != isUpdating { self.isUpdating = isUpdating }
         if self.style != style { self.style = style }
+    }
+
+    func updateDestinations(_ destinations: [DesktopDestination]) {
+        if self.destinations != destinations { self.destinations = destinations }
     }
 
     func updateFocus(_ processID: Int32?) {

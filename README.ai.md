@@ -32,7 +32,7 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 ## Using Altdock
 
 - **Click** an icon to activate the app. Hover to see its full name immediately in a Dock-style label above a bottom dock or toward the desktop from a side dock. The label has fully rounded corners and uses a 13-point regular macOS system font. It measures the text using that font and expands horizontally on one line. Only a name wider than the available screen is ellipsized. It does not resize the dock or intercept clicks. Icons keep the captured native size rather than using Altdock-specific magnification.
-- **Right-click** for Open, Hide, or Quit. Quit uses the app’s normal termination flow, not force-quit.
+- **Right-click** for Open, **Move to**, Hide, or Quit. The move submenu lists the other ordinary Desktops on the selected display in Mission Control order. Quit uses the app’s normal termination flow, not force-quit.
 - Icons are vertically centered in bottom docks and horizontally centered in side docks. The running indicator is drawn separately, centered in the gap between the icon's image bounds and the dock's screen-facing border, so it cannot shift the icon. A wider indicator marks the frontmost app.
 - The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, display selection, and launch at login, and reports the captured native edge and icon size.
 - With **Automatically Hide** enabled, move the pointer to the corresponding bottom, left, or right screen edge to reveal Altdock.
@@ -40,6 +40,14 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 - On the visible Space-bound dock, app additions/removals use a 240 ms ease-in/out scale-and-fade transition anchored toward the screen edge. Neighboring icons and the panel resize together. The first app reveals the panel; removing the last app hides it immediately. There is no empty placeholder or loading spinner. This is a Dock-like approximation, not Apple's private animation implementation.
 - Reduce Motion disables membership movement. Initial layouts, background/hidden panels, display/style changes, and the shared-panel compatibility renderer update immediately. Switching Spaces does not replay membership animations.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
+
+## Move an app's current-Desktop windows
+
+Right-click an app icon → **Move to** → choose the destination. Altdock re-reads window ownership and Space membership, moves only the selected process's eligible windows assigned exclusively to the source Desktop, then verifies their new membership and refreshes the panels. It does not request a desktop switch or launch another app instance.
+
+Windows on other Desktops, windows assigned to multiple/all Desktops, ordered-out/minimized/hidden windows, and windows on other displays are not included. Full-screen Spaces are neither sources nor destinations. The menu is disabled in the shared-panel fallback or when the private move backend is unavailable. If the active Desktop or destination changed since the menu was opened, the operation is rejected.
+
+macOS's private bridged window-management operation is used because the older direct move function did not move another app's window in testing on this Mac. No SIP changes, scripting additions, global Space changes, or permission bypasses are used. Submission is not considered success until every selected window reads back on the destination. Partial failures report the moved count; Altdock does not repeatedly retry or blindly roll back windows. App-specific behavior and macOS updates can still affect moving windows.
 
 ## Matching the native Dock
 
@@ -57,7 +65,7 @@ Native metrics use read-only CoreDock queries and the `tilesize` preference. Whe
 - A transient discovery failure preserves the last successful all-Spaces snapshot. It does not replace other Spaces' caches with the current display's on-screen list. A successful empty result clears that Space and hides its panel. An unknown destination never borrows the previous Space's icons.
 - Hiding a panel because its cache is empty does **not** disable space reservation. The captured edge/footprint remains active (subject to Accessibility, explicit Hide Altdock, Reserve Space, and auto-hide settings). While discovery is pending, reservation can inspect current on-screen windows separately without making the panel visible.
 - Panels use managed, Space-bound collection behavior rather than `canJoinAllSpaces`/`stationary`. macOS controls their visibility as desktops move. In always-visible mode, inactive panels remain **ordered in their own Spaces**, not moved onto or shown over the active desktop.
-- `SLSMoveWindowsToManagedSpace` is dynamically loaded to attach **only Altdock-owned panels**. Creation occurs at zero opacity; membership must read back as exactly the destination Space before a panel can be shown. Altdock does not move other applications' windows between Spaces or programmatically switch desktops.
+- `SLSMoveWindowsToManagedSpace` is dynamically loaded to attach **only Altdock-owned panels**. Creation occurs at zero opacity; membership must read back as exactly the destination Space before a panel can be shown. This automatic panel-placement path never moves other apps' windows or switches Desktops; the separate right-click move action requires an explicit user selection.
 - Panels sit **8 points inside the original bottom, left, or right display edge**, not inside the system Dock's stale work-area inset. The non-docked axis is centered in the visible work area.
 - Switching Spaces updates focus/visibility, not panel membership, root hosting views, or frame sizes. Membership changes within a Space can still change that Space's dock size. Display changes rebuild the relevant panels, deleted Spaces close theirs, and quit closes all panels.
 - Auto-hide remains available; only the active panel responds to the reveal edge. Inactive panels are hidden in auto-hide mode. Hide Altdock hides every panel.
