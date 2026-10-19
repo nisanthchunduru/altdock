@@ -6,6 +6,7 @@ private typealias DockViewState<Value> = SwiftUI.State<Value>
 
 struct DockView: View {
     @ObservedObject var presentation: DockPresentation
+    let tooltip: DockTooltipController
     let activate: (NSRunningApplication) -> Void
 
     private var style: DockStyle { presentation.style }
@@ -57,8 +58,10 @@ struct DockView: View {
     private var icons: some View {
         ForEach(presentation.applications) { application in
             DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style) {
+                tooltip.hide()
                 activate(application.application)
             }
+            .background(DockHoverAnchor(name: application.name, edge: style.edge, enabled: !presentation.isUpdating, tooltip: tooltip))
             .transition(iconTransition)
         }
     }
@@ -94,7 +97,6 @@ private struct DockIcon: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .help(application.name)
         .accessibilityLabel(application.name)
         .accessibilityValue(isActive ? "Active application" : "Running")
         .accessibilityHint("Switch to this application")

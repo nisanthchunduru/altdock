@@ -25,6 +25,7 @@ final class NativeDockSurface: DockSurface {
     private let panel: NSPanel
     private let frameAnimator: DockFrameAnimator
     private let presentation = DockPresentation()
+    private let tooltip = DockTooltipController()
     private let placement: SpacePanelPlacement
     private let isSpaceBound: Bool
     private var lastLayout: DockPanelLayout?
@@ -55,12 +56,13 @@ final class NativeDockSurface: DockSurface {
         panel.isExcludedFromWindowsMenu = true
         panel.animationBehavior = .none
         panel.alphaValue = 0
-        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, activate: activate))
+        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate))
         hostingView.sizingOptions = []
         panel.contentView = hostingView
     }
 
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout) {
+        if isUpdating || presentation.applications.map(\.id) != applications.map(\.id) || lastLayout != layout { tooltip.hide() }
         let animate = DockMembershipAnimation.shouldAnimate(
             previousIDs: presentation.applications.map(\.id), nextIDs: applications.map(\.id),
             previousLayout: lastLayout, nextLayout: layout,
@@ -94,6 +96,7 @@ final class NativeDockSurface: DockSurface {
     }
 
     func hide() {
+        tooltip.hide()
         frameAnimator.finish()
         guard isOrdered else { return }
         panel.orderOut(nil)
@@ -101,6 +104,7 @@ final class NativeDockSurface: DockSurface {
     }
 
     func close() {
+        tooltip.stop()
         frameAnimator.finish()
         panel.orderOut(nil)
         panel.close()

@@ -113,6 +113,13 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Enable macOS Reduce Motion and repeat insertion/removal: use immediate layout changes rather than scaling/sliding. Test `--shared-panel`: membership changes are immediate to avoid animating between unrelated Spaces.
 - [ ] Fill the dock enough to require scrolling: app transitions must retain native icon size and keep overflow reachable.
 
+### Hover labels
+
+- [ ] Hover each icon: its complete name appears immediately above/beside the dock, without changing icon position or panel dimensions. Move between short/long names and check the text is not clipped or ellipsized.
+- [ ] Test bottom, left, and right docks, icons near screen corners, and scrolled overflow. Labels should remain on-screen and follow the visible icon bounds.
+- [ ] Click, open a context menu, leave the dock, switch Spaces, close the app, and hide/quit Altdock: stale labels must disappear and never intercept mouse clicks or activate Altdock.
+- [ ] Check long Unicode names: the label grows horizontally and always stays on one line. Only names wider than the available display area are ellipsized. Check light/dark and Reduce Transparency.
+
 ### Presentation and settings
 
 - [ ] Check icon centering at bottom/left/right: the image box has equal cross-axis margins, independent of the running indicator and active-app state. With native 64-point icons and an 82-point panel, both margins are nine points. Test at 1x and Retina scaling; app artwork with asymmetric transparent padding can appear optically offset even when its image box is centered.

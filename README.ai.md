@@ -31,7 +31,7 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 
 ## Using Altdock
 
-- **Click** an icon to activate the app. Hover to see its name; icons keep the captured native size rather than using Altdock-specific magnification.
+- **Click** an icon to activate the app. Hover to see its full name immediately in a Dock-style label above a bottom dock or toward the desktop from a side dock. The label has fully rounded corners and uses a 13-point regular macOS system font. It measures the text using that font and expands horizontally on one line. Only a name wider than the available screen is ellipsized. It does not resize the dock or intercept clicks. Icons keep the captured native size rather than using Altdock-specific magnification.
 - **Right-click** for Open, Hide, or Quit. Quit uses the app’s normal termination flow, not force-quit.
 - Icons are vertically centered in bottom docks and horizontally centered in side docks. The running indicator is drawn separately, centered in the gap between the icon's image bounds and the dock's screen-facing border, so it cannot shift the icon. A wider indicator marks the frontmost app.
 - The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, display selection, and launch at login, and reports the captured native edge and icon size.
