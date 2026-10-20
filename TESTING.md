@@ -75,6 +75,8 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.
+- [ ] Open multiple windows from one app in the same Space. Focus each in turn and repeatedly click its icon: the focused window must stay focused, even if a sibling comes first in WindowServer ordering.
+- [ ] Focus that app on another display/Space, then click its local icon: a local eligible window must still be raised. Test focus-query failure/no Accessibility: no unrelated AX window should be raised and no prompt should appear.
 - [ ] Give one app windows in multiple Spaces. Enable Accessibility, then click it from each Space: check that the local window is raised, including identical window geometries and minimized windows.
 - [ ] Deny Accessibility: filtering still works; switching falls back to standard macOS activation without repeatedly prompting.
 - [ ] Open the context menu: Open, Hide, and Quit behave normally. Quit an app with unsaved work and confirm its save prompt is respected.

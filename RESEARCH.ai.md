@@ -226,6 +226,12 @@ On macOS 26.7.1, a two-process native probe found `SLSMoveWindowsToManagedSpace`
 
 A second native probe using the actual new service moved a separate test process's window, verified its target membership, and confirmed the active Desktop remained unchanged. Tests use synthetic window data and a fake bridge to cover scope, source/destination changes, unknown membership, no-window/unsupported cases, bounded verification, and partial success. The real probe opened/closed only its own disposable window, not user app windows.
 
+## Preserve focused windows on icon clicks
+
+`ApplicationActivator` now reads the clicked app's `AXFocusedWindow` before enumerating fallback windows. It checks that this window belongs to the target PID and matches an eligible current-Space/display window. If the app is active and not hidden, activation is a no-op: no unhide, AXMain, AXRaise, or application.activate call. A background/hidden app's remembered focused local window is preferred when bringing it forward. Missing/nonlocal focus falls back to the first accessible local candidate; absent Accessibility uses normal macOS activation without prompting.
+
+Native AX reads/writes live in `NativeApplicationActivation` behind an injectable `ApplicationActivationAccess` protocol. Tests verify the actual activation orchestration and absence of side effects, not merely a window-ID sort: focused sibling listed second, repeated clicks, background/hidden activation, other-Space/display focus, read failure, missing permission, no eligible windows, wrong PID, and unmatched AX windows. Permission-dependent app-specific behavior still needs native acceptance.
+
 ## Verification priorities
 
 Test geometry in Quartz's top-left coordinate system, including negative monitor coordinates and system Dock/menu-bar insets; known/unknown Spaces; loop suppression; manual overrides; restoration guards; fixed-size/minimum-size apps; missing permissions; default-enabled migration; and preference backup/apply/restore failures. Native acceptance must cover Mission Control, full screen, multi-monitor arrangements, app/tiling-manager conflicts, normal quit, force quit, and restart. Unit tests are not proof of behavior in every third-party app.
