@@ -142,6 +142,19 @@ final class DockModel: ObservableObject {
         }
     }
 
+    func reorderApplication(_ processID: Int32, to index: Int, on source: UInt64) {
+        guard !isSwitchingSpace, !isFullScreenSpaceActive, activeSpaceID == source,
+              let bounds = displayBounds(), windowTracker.activeSpaceID(on: bounds) == source,
+              let cached = spaceApplications?[source], cached.contains(where: { $0.id == processID }) else { return }
+        let orderedIDs = DockIconOrder.moving(processID, to: index, in: cached.map(\.id))
+        guard orderedIDs != cached.map(\.id) else { return }
+        let byID = Dictionary(uniqueKeysWithValues: cached.map { ($0.id, $0) })
+        let ordered = orderedIDs.compactMap { byID[$0] }
+        iconOrders[source] = DockIconOrder.replacingVisibleOrder(orderedIDs, previous: iconOrders[source, default: []])
+        spaceApplications?[source] = ordered
+        applications = ordered
+    }
+
     func spaceDidChange() {
         spaceRefresh?.cancel()
         fallbackReadyAt = now().addingTimeInterval(0.4)
@@ -179,10 +192,9 @@ final class DockModel: ObservableObject {
                 windows: windows, previousOrder: iconOrders[spaceID, default: []],
                 names: byID.mapValues { $0.localizedName ?? "" }
             )
-            iconOrders[spaceID] = ordered
+            iconOrders[spaceID] = DockIconOrder.remembering(ordered, previous: iconOrders[spaceID, default: []])
             snapshots[spaceID] = ordered.compactMap { byID[$0].map(DockApplication.init) }
         }
-        iconOrders = iconOrders.filter { $0.key == 0 || selections[$0.key] != nil }
         if spaceApplications?.mapValues({ $0.map(\.id) }) != snapshots.mapValues({ $0.map(\.id) }) {
             spaceApplications = snapshots
         }
@@ -208,7 +220,7 @@ final class DockModel: ObservableObject {
             windows: selection.windows, previousOrder: iconOrders[orderKey, default: []],
             names: applicationsByID.mapValues { $0.localizedName ?? "" }
         )
-        iconOrders[orderKey] = orderedIDs
+        iconOrders[orderKey] = DockIconOrder.remembering(orderedIDs, previous: iconOrders[orderKey, default: []])
         if orderedIDs != applications.map(\.id) {
             applications = orderedIDs.compactMap { applicationsByID[$0].map(DockApplication.init) }
         }

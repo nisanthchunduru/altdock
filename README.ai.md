@@ -32,6 +32,7 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 ## Using Altdock
 
 - **Click** an icon to activate the app. If its eligible local window is already focused, Altdock leaves that window focused instead of raising a sibling. Hover to see its full name immediately in a Dock-style label above a bottom dock or toward the desktop from a side dock. The label has fully rounded corners and uses a 13-point regular macOS system font. It measures the text using that font and expands horizontally on one line. Only a name wider than the available screen is ellipsized. It does not resize the dock or intercept clicks. Icons keep the captured native size rather than using Altdock-specific magnification.
+- **Drag an icon** left/right in a bottom dock, or up/down in a side dock, then release inside the panel to rearrange it. Neighboring icons preview the new order. Release outside the panel to cancel; a drag does not activate the app. Each Desktop retains its own order across discovery refreshes and Space switches during the current Altdock session, even if apps or the Space temporarily disappear from discovery. Remembered ordering never makes an absent app visible. Orders are not yet persisted across Altdock restarts. For an overflowing dock, scroll to expose the icons you want to rearrange; dragging does not auto-scroll.
 - **Right-click** for Open, **Move to**, Hide, or Quit. The move submenu lists the other ordinary Desktops on the selected display in Mission Control order. Quit uses the app’s normal termination flow, not force-quit.
 - Icons are vertically centered in bottom docks and horizontally centered in side docks. The running indicator is drawn separately, centered in the gap between the icon's image bounds and the dock's screen-facing border, so it cannot shift the icon. A wider indicator marks the frontmost app.
 - The **menu-bar icon** controls dock visibility, automatic hiding, space reservation, display selection, and launch at login, and reports the captured native edge and icon size.
@@ -40,6 +41,8 @@ The test script uses Swift Testing and handles the Testing macro-plugin location
 - On the visible Space-bound dock, app additions/removals use a 240 ms ease-in/out scale-and-fade transition anchored toward the screen edge. Neighboring icons and the panel resize together. The first app reveals the panel; removing the last app hides it immediately. There is no empty placeholder or loading spinner. This is a Dock-like approximation, not Apple's private animation implementation.
 - Reduce Motion disables membership movement. Initial layouts, background/hidden panels, display/style changes, and the shared-panel compatibility renderer update immediately. Switching Spaces does not replay membership animations.
 - Appearance follows the system, with support for Reduce Motion, Reduce Transparency, and VoiceOver labels.
+
+Rearranging icons does not move application windows between Desktops, pin an app, or modify the native Dock. It is unavailable in the shared-panel compatibility mode because that panel has no fixed source Desktop. Reduce Motion disables the neighboring-icon animation while preserving dragging.
 
 ## Move an app's current-Desktop windows
 

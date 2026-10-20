@@ -63,6 +63,14 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] For A/B comparison, quit and run `open dist/Altdock.app --args --shared-panel`; relaunch without the argument to restore the prototype. This uses the same signed binary and needs no re-signing.
 - [ ] Verify stale clicks from an outgoing panel do not activate an app after changing Spaces.
 
+### Rearranging icons
+
+- [ ] Drag the first/middle/last icon to another slot on a bottom dock and both side docks. The dragged icon follows the pointer and neighbors preview their new positions; releasing inside commits once without activating the app.
+- [ ] Release outside the dock or cancel the gesture: restore the original order. Opening/closing an app during dragging must not commit stale membership.
+- [ ] Wait for multiple discovery refreshes and switch away/back: keep that Desktop's order while leaving other Desktops unchanged. Test temporary empty/partial snapshots or a hidden/restored app: returning apps keep remembered ranks without displaying absent apps. Restarting Altdock may reset the order (session-only storage).
+- [ ] Verify click activation, name-on-hover, and right-click Move to/Hide/Quit still work. Reordering must not change app windows' actual Desktop assignments.
+- [ ] Test native-sized overflowing docks by scrolling first, then dragging visible icons; no auto-scroll is implemented. Reduce Motion suppresses neighbor animation. Shared-panel compatibility mode does not reorder.
+
 ### Moving windows between Desktops
 
 - [ ] Right-click an app → Move to. Labels follow Mission Control's current Desktop order, omit the source, and exclude full-screen Spaces.

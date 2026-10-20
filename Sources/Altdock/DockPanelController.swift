@@ -42,6 +42,8 @@ final class DockPanelController: ObservableObject {
             self.makeSurface = { [weak model] spaceID in
                 NativeDockSurface(spaceID: spaceID, placement: placement, moveWindows: spaceID.map { source in
                     { [weak model] application, destination in model?.moveWindows(of: application, from: source, to: destination) }
+                }, reorderApplication: spaceID.map { source in
+                    { [weak model] processID, index in model?.reorderApplication(processID, to: index, on: source) }
                 }) { [weak model] application in
                     model?.activate(application, expectedSpaceID: spaceID)
                 }

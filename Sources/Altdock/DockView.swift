@@ -9,6 +9,9 @@ struct DockView: View {
     let tooltip: DockTooltipController
     let activate: (NSRunningApplication) -> Void
     var moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil
+    var reorderApplication: ((Int32, Int) -> Void)? = nil
+    @StateObject private var drag = DockIconDragState()
+    @GestureState private var dragGestureActive = false
 
     private var style: DockStyle { presentation.style }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -26,21 +29,30 @@ struct DockView: View {
     }
 
     var body: some View {
-        Group {
-            if style.edge.isVertical {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 6) { icons }
-                        .padding(.vertical, 12)
+        GeometryReader { geometry in
+            Group {
+                if style.edge.isVertical {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 6) { icons(panelSize: geometry.size) }
+                            .padding(.vertical, 12)
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: drag.preview)
+                    }
+                    .transition(reduceMotion ? .identity : .opacity)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) { icons(panelSize: geometry.size) }
+                            .padding(.horizontal, 12)
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: drag.preview)
+                    }
+                    .transition(reduceMotion ? .identity : .opacity)
                 }
-                .transition(reduceMotion ? .identity : .opacity)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) { icons }
-                        .padding(.horizontal, 12)
-                }
-                .transition(reduceMotion ? .identity : .opacity)
             }
         }
+        .coordinateSpace(name: "altdock-panel")
+        .onChange(of: presentation.applications.map(\.id)) { _ in drag.cancel() }
+        .onChange(of: presentation.isUpdating) { updating in if updating { drag.cancel() } }
+        .onChange(of: dragGestureActive) { active in if !active { drag.cancel() } }
+        .onDisappear { drag.cancel() }
         .disabled(presentation.isUpdating)
         .background(DockMaterial())
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -51,13 +63,36 @@ struct DockView: View {
         .accessibilityLabel("Altdock, applications in this Space")
     }
 
-    private var icons: some View {
-        ForEach(presentation.applications) { application in
+    private func icons(panelSize: CGSize) -> some View {
+        let byID = Dictionary(uniqueKeysWithValues: presentation.applications.map { ($0.id, $0) })
+        let displayed = drag.processID == nil ? presentation.applications : drag.preview.compactMap { byID[$0] }
+        return ForEach(displayed) { application in
             DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style, destinations: presentation.destinations, moveWindows: moveWindows) {
+                guard !drag.suppressesClick else { return }
                 tooltip.hide()
                 activate(application.application)
             }
-            .background(DockHoverAnchor(name: application.name, edge: style.edge, enabled: !presentation.isUpdating, tooltip: tooltip))
+            .background(DockHoverAnchor(name: application.name, edge: style.edge, enabled: !presentation.isUpdating && drag.processID == nil, tooltip: tooltip))
+            .offset(
+                x: drag.processID == application.id && !style.edge.isVertical ? drag.displacement(stride: style.iconSize + 12) : 0,
+                y: drag.processID == application.id && style.edge.isVertical ? drag.displacement(stride: style.iconSize + 12) : 0
+            )
+            .zIndex(drag.processID == application.id ? 1 : 0)
+            .transaction { transaction in
+                if drag.processID == application.id { transaction.animation = nil }
+            }
+            .simultaneousGesture(DragGesture(minimumDistance: 6, coordinateSpace: .named("altdock-panel"))
+                .updating($dragGestureActive) { _, active, _ in active = true }
+                .onChanged { value in
+                    guard reorderApplication != nil else { return }
+                    tooltip.hide()
+                    drag.update(processID: application.id, order: presentation.applications.map(\.id), translation: style.edge.isVertical ? value.translation.height : value.translation.width, stride: style.iconSize + 12)
+                }
+                .onEnded { value in
+                    drag.finish(order: presentation.applications.map(\.id), insidePanel: CGRect(origin: .zero, size: panelSize).contains(value.location)) { id, index in
+                        reorderApplication?(id, index)
+                    }
+                })
             .transition(iconTransition)
         }
     }

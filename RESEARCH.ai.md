@@ -226,6 +226,20 @@ On macOS 26.7.1, a two-process native probe found `SLSMoveWindowsToManagedSpace`
 
 A second native probe using the actual new service moved a separate test process's window, verified its target membership, and confirmed the active Desktop remained unchanged. Tests use synthetic window data and a fake bridge to cover scope, source/destination changes, unknown membership, no-window/unsupported cases, bounded verification, and partial success. The real probe opened/closed only its own disposable window, not user app windows.
 
+## Drag-to-reorder icons per Desktop
+
+`DockIconOrder` provides pure move/clamp and nearest-slot calculations. `DockIconDragState` keeps an original order and a local preview, with dragged-item displacement relative to the preview slot so the icon follows the pointer. `DockView` uses a six-point-threshold simultaneous DragGesture in the panel coordinate space, horizontal at the bottom and vertical at either side. Neighbors animate their preview positions unless Reduce Motion is enabled. Tooltip tracking is suppressed during dragging, and post-drag click suppression prevents mouse release from activating an app.
+
+Only a changed order released inside the panel is committed. Outside drops, gesture cancellation, membership changes, loading, and view disappearance clear the preview. The per-Space surface captures its source ID; `DockModel.reorderApplication` revalidates the active source Desktop and existing app membership, updates `iconOrders` and that Space's cached list, and leaves other Spaces untouched. Subsequent discovery retains the chosen ordering. No windows are moved, no pinning is added, and no native Dock preferences change. Order is per-session, not disk-persistent; overflow can be scrolled before rearranging, with no drag auto-scroll in this version. Shared fallback panels disable reordering.
+
+Tests cover move directions, index bounds, invalid input, midpoint thresholds, canceled/outside/stale drops, click suppression, per-Desktop isolation and refresh stability. A native AppKit-event probe using the actual DockView and synthetic app icons verified bottom/left/right drags: [101,102,103] became [102,103,101], exactly one commit, zero app activations. The first probe produced no gestures because its hosting view had not been explicitly laid out; setting its frame and laying out the native view fixed the harness. No user windows were moved or reordered by the probe.
+
+## Reorder retention across transient Space snapshots
+
+The first reorder implementation reused the visible PID list as its ordering memory. `orderedProcessIDs` correctly filters absent apps, but writing that filtered result back into `iconOrders` erased temporarily absent ranks; pruning the dictionary against the current selection also erased an omitted Space. Three regressions reproduced the reset to alphabetical order after an empty inactive snapshot, an omitted Space, and a missing/reappearing app.
+
+Ordering memory is now independent of visibility: `DockIconOrder.remembering` retains known ranks and appends newly seen PIDs. `replacingVisibleOrder` updates visible ranks on a user drop while preserving temporarily absent entries. The per-Space ranking dictionary survives incomplete topology snapshots for the session; only the actual discovered/cached app list decides which icons display. Empty Spaces remain hidden, absent apps do not become phantom icons, and deleted panels still close. PID-based ordering remains session-only and is not persisted across Altdock restarts.
+
 ## Preserve focused windows on icon clicks
 
 `ApplicationActivator` now reads the clicked app's `AXFocusedWindow` before enumerating fallback windows. It checks that this window belongs to the target PID and matches an eligible current-Space/display window. If the app is active and not hidden, activation is a no-op: no unhide, AXMain, AXRaise, or application.activate call. A background/hidden app's remembered focused local window is preferred when bringing it forward. Missing/nonlocal focus falls back to the first accessible local candidate; absent Accessibility uses normal macOS activation without prompting.
