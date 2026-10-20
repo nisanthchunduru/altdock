@@ -80,6 +80,17 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] When macOS refuses some windows, an error reports the moved count. Do not repeatedly move or automatically roll back already moved windows.
 - [ ] Shared-panel fallback and unavailable private backend must disable the move submenu. Quit during verification must stop polling without altering additional windows.
 
+### Returning from native full screen
+
+- [ ] With Altdock already running, open a window on Desktop 2 or later, enter native full screen, then exit. Repeat with an app-initiated transition (e.g. Zoom) and with exit followed by minimize. The same window returns to its original Desktop, even when another Desktop was used during full screen.
+- [ ] Delete its original Desktop while it is full-screen: return to Desktop 1 in Mission Control order, not the lowest numeric Space ID. Reorder Desktops without deleting the original: retain the original stable Desktop.
+- [ ] Use two windows from the same app with different origins. Returning one must not move its sibling, unminimize/unhide it, steal focus, or explicitly switch the active Desktop.
+- [ ] Check Split View exit, minimize/restore, hidden app return, repeated cycles, rapid exit/reentry, and transitions that briefly omit window membership. No move should occur while the window still belongs to a full-screen Space.
+- [ ] Move a window intentionally before full screen and after a completed return: remember the latest ordinary location, with no ongoing tug-of-war. Ordinary maximize/minimize and all-Desktops windows must not be redirected.
+- [ ] On multiple displays, return to the original Desktop/display. Delete that Desktop: use that display's first Desktop. Disconnect the display: use the primary display's first Desktop. A temporary metadata failure must not be treated as deletion.
+- [ ] Restart Altdock while a window is full-screen, or use an app that destroys/recreates its window on exit: do not guess a sibling's origin. History is session-only and requires the original window identity to have been observed before full screen.
+- [ ] In `--public-windows` mode, no automatic return moves occur. Failed private moves log an unverified/rejected return without repeated submissions or permission prompts.
+
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.

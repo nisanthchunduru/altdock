@@ -29,6 +29,7 @@ final class SpaceWindowTracker: SpaceWindowTracking {
     private let spaces: (any SpaceQuerying)?
     private let captureWindows: (CGWindowListOption) -> [SpaceWindow]?
     private(set) var index: SpaceWindowIndex?
+    var didCaptureWindows: (([SpaceWindow], Set<Int32>) -> Void)?
     private var onScreenWindows: [SpaceWindow]?
     private var lastSnapshotSucceeded = false
 
@@ -107,6 +108,7 @@ final class SpaceWindowTracker: SpaceWindowTracking {
     private func allSpacesSnapshot(regularProcessIDs: Set<Int32>) -> SpaceWindowIndex? {
         guard let spaces, let spaceIDs = spaces.allSpaceIDs(),
               let windows = captureWindows([.optionAll, .excludeDesktopElements]) else { return nil }
+        didCaptureWindows?(windows, regularProcessIDs)
         let candidates = SpaceApplications.windows(
             from: windows, regularProcessIDs: regularProcessIDs,
             excluding: ProcessInfo.processInfo.processIdentifier,

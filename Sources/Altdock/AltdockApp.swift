@@ -53,6 +53,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dock: DockPanelController?
     private var statusMenu: StatusMenuController?
     private var reservation: WindowReservationController?
+    private var fullScreenReturn: FullScreenReturnController?
     private let systemDock = SystemDockSession()
     private var isQuitting = false
 
@@ -72,6 +73,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let fullScreenReturn = FullScreenReturnController()
+        self.fullScreenReturn = fullScreenReturn
+        windowTracker.didCaptureWindows = { [weak fullScreenReturn] windows, processIDs in
+            fullScreenReturn?.observe(windows: windows, regularProcessIDs: processIDs)
+        }
         let preferences = DockPreferences(style: systemDock.dockStyle ?? DockStyle())
         let model = DockModel(preferences: preferences, windowTracker: windowTracker)
         self.model = model
@@ -89,6 +95,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isQuitting else { return .terminateLater }
         isQuitting = true
+        windowTracker.didCaptureWindows = nil
+        fullScreenReturn = nil
         model?.stop()
         dock?.stop()
         Task {
