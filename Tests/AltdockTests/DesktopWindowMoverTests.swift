@@ -19,6 +19,45 @@ struct DesktopWindowMoverTests {
         #expect(fixture.spaces.active == 100)
     }
 
+    @Test("Focused-only moves select that window even when another sibling appears first")
+    func movesFocusedSiblingOnly() async throws {
+        let fixture = MoveFixture()
+        fixture.focused = 3
+        fixture.spaces.ordering[3] = true
+        let moved = try await fixture.mover.move(processID: 42, from: 100, to: 200, on: fixture.display, scope: .focused)
+        #expect(moved == 1)
+        #expect(fixture.bridge.requests == [[3]])
+        #expect(fixture.spaces.membership[1] == [100])
+        #expect(fixture.spaces.active == 100)
+    }
+
+    @Test("No local focused window never falls back to moving a sibling or the entire app")
+    func refusesNonlocalFocus() async {
+        for focused: UInt32? in [nil, 2, 3, 4, 5, 6, 999] {
+            let fixture = MoveFixture()
+            fixture.focused = focused
+            do {
+                _ = try await fixture.mover.move(processID: 42, from: 100, to: 200, on: fixture.display, scope: .focused)
+                Issue.record("Expected rejection for unavailable, other-Desktop/display, hidden, other-PID or shared focus")
+            } catch { #expect(fixture.bridge.requests.isEmpty) }
+        }
+    }
+
+    @Test("Focus or active-Desktop changes before submission cancel a focused-only move")
+    func rejectsChangedFocus() async {
+        for changesDesktop in [false, true] {
+            let fixture = MoveFixture()
+            fixture.beforeSecondFocusRead = {
+                if changesDesktop { fixture.spaces.active = 200 }
+                else { fixture.focused = 2 }
+            }
+            do {
+                _ = try await fixture.mover.move(processID: 42, from: 100, to: 200, on: fixture.display, scope: .focused)
+                Issue.record("Expected stale-focus rejection")
+            } catch { #expect(fixture.bridge.requests.isEmpty) }
+        }
+    }
+
     @Test("Stale source menus and deleted or full-screen destinations cause no writes")
     func rejectsStaleRequests() async {
         for (source, destination) in [(UInt64(200), UInt64(100)), (100, 999), (100, 300), (100, 100)] {
@@ -96,6 +135,9 @@ private final class MoveFixture {
     let spaces = MoveSpaces()
     lazy var bridge = MoveBridge(spaces: spaces)
     var waits = 0
+    var focused: UInt32? = 1
+    var focusReads = 0
+    var beforeSecondFocusRead: (() -> Void)?
     lazy var mover = DesktopWindowMover(spaces: spaces, bridge: bridge, capture: {
         [
             SpaceWindow(id: 1, processID: 42, bounds: CGRect(x: 10, y: 10, width: 800, height: 600)),
@@ -105,7 +147,11 @@ private final class MoveFixture {
             SpaceWindow(id: 5, processID: 42, bounds: CGRect(x: 10, y: 10, width: 800, height: 600)),
             SpaceWindow(id: 6, processID: 42, bounds: CGRect(x: 2000, y: 10, width: 800, height: 600))
         ]
-    }, wait: { [weak self] in self?.waits += 1 })
+    }, wait: { [weak self] in self?.waits += 1 }, focusedWindowID: { [unowned self] _ in
+        focusReads += 1
+        if focusReads == 2 { beforeSecondFocusRead?() }
+        return focused
+    })
 }
 
 @MainActor

@@ -46,6 +46,10 @@ final class DockPanelController: ObservableObject {
                     { [weak model] processID, index in model?.reorderApplication(processID, to: index, on: source) }
                 }, restoreMinimizedWindow: { [weak model] item in
                     model?.restoreMinimizedWindow(item, expectedSpaceID: spaceID)
+                }, moveFocusedWindow: spaceID.map { source in
+                    { [weak model] application, destination in
+                        model?.moveWindows(of: application, from: source, to: destination, scope: .focused)
+                    }
                 }) { [weak model] application in
                     model?.activate(application, expectedSpaceID: spaceID)
                 }

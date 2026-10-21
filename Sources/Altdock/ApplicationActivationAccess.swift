@@ -39,6 +39,18 @@ final class NativeApplicationActivation: ApplicationActivationAccess {
         AXUIElementSetMessagingTimeout(element, 0.2)
     }
 
+    static func focusedWindowID(processID: Int32) -> UInt32? {
+        guard AXIsProcessTrusted(), let application = NSRunningApplication(processIdentifier: processID),
+              !application.isTerminated else { return nil }
+        let access = NativeApplicationActivation(application: application)
+        guard let window = access.focusedWindow(), let copyWindowID = Self.copyWindowID else { return nil }
+        var owner: pid_t = 0
+        var identifier: UInt32 = 0
+        guard AXUIElementGetPid(window, &owner) == .success, owner == processID,
+              copyWindowID(window, &identifier) == 0, identifier != 0 else { return nil }
+        return identifier
+    }
+
     func focusedWindow() -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXFocusedWindowAttribute as CFString, &value) == .success,

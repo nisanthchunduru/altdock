@@ -294,6 +294,12 @@ DockModel coalesces minimize/restore events for 10ms on the main queue, then per
 
 Native before/after measurements observed the start of the actual panel-width animation after each fixture AX miniaturize event. Before: about116ms and688ms for two windows. After the startup-retry fix: about90ms and82ms. These are short live timing samples, not a guaranteed latency bound. Only disposable fixture windows were minimized. Tests cover prompt/coalesced refresh, cancellation, permission changes, observer reuse, PID removal/reuse, partial-failure backoff, and cleanup.
 
+## Focused-only Desktop moves
+
+`DesktopWindowMoveScope.focused` resolves the selected app's AXFocusedWindow to an exact WindowServer ID, then filters only that ID through the existing PID/display/ordered/exclusive-source eligibility. It rechecks focused ID, ownership/geometry, ordering, membership, active source and destination immediately before the single bridged move. No nil-focus/sibling fallback. Existing all-window behavior remains as Move; both scopes retain the existing move-task busy gating and cancellation.
+
+Native two-process testing moved a disposable app's focused window while two siblings stayed on the source and the active Desktop did not change. Unit tests cover focused sibling selection, wrong PID/display/Space/shared/minimized candidates, and focus/source changes before submission. No user windows were moved in these probes.
+
 ## Verification priorities
 
 Test geometry in Quartz's top-left coordinate system, including negative monitor coordinates and system Dock/menu-bar insets; known/unknown Spaces; loop suppression; manual overrides; restoration guards; fixed-size/minimum-size apps; missing permissions; default-enabled migration; and preference backup/apply/restore failures. Native acceptance must cover Mission Control, full screen, multi-monitor arrangements, app/tiling-manager conflicts, normal quit, force quit, and restart. Unit tests are not proof of behavior in every third-party app.

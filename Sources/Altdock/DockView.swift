@@ -11,6 +11,7 @@ struct DockView: View {
     var moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil
     var reorderApplication: ((Int32, Int) -> Void)? = nil
     var restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil
+    var moveFocusedWindow: ((NSRunningApplication, UInt64) -> Void)? = nil
     @StateObject private var drag = DockIconDragState()
     @GestureState private var dragGestureActive = false
 
@@ -89,7 +90,7 @@ struct DockView: View {
         let byID = Dictionary(uniqueKeysWithValues: presentation.applications.map { ($0.id, $0) })
         let displayed = drag.processID == nil ? presentation.applications : drag.preview.compactMap { byID[$0] }
         return ForEach(displayed) { application in
-            DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style, destinations: presentation.destinations, moveWindows: moveWindows) {
+            DockIcon(application: application, isActive: presentation.activeProcessID == application.id, style: style, destinations: presentation.destinations, moveWindows: moveWindows, moveFocusedWindow: moveFocusedWindow) {
                 guard !drag.suppressesClick else { return }
                 tooltip.hide()
                 activate(application.application)
@@ -127,6 +128,7 @@ private struct DockIcon: View {
     let style: DockStyle
     let destinations: [DesktopDestination]
     let moveWindows: ((NSRunningApplication, UInt64) -> Void)?
+    let moveFocusedWindow: ((NSRunningApplication, UInt64) -> Void)?
     let activate: () -> Void
     @DockViewState private var isHovered = false
 
@@ -146,7 +148,12 @@ private struct DockIcon: View {
             Text(application.name)
             Divider()
             Button("Open", action: activate)
-            Menu("Move to") {
+            Menu("Move Focused Window") {
+                ForEach(destinations) { destination in
+                    Button(destination.name) { moveFocusedWindow?(application.application, destination.id) }
+                }
+            }.disabled(moveFocusedWindow == nil || destinations.isEmpty)
+            Menu("Move") {
                 ForEach(destinations) { destination in
                     Button(destination.name) { moveWindows?(application.application, destination.id) }
                 }

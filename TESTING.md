@@ -73,7 +73,9 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 ### Moving windows between Desktops
 
-- [ ] Right-click an app → Move to. Labels follow Mission Control's current Desktop order, omit the source, and exclude full-screen Spaces.
+- [ ] With two windows of one app on this Desktop, focus each in turn and choose Move Focused Window. Only that focused window moves; siblings and the active Desktop stay put. Focus on another display/Space, minimized/hidden/shared windows, absent AX focus, stale source/destination and changed focus must reject rather than fall back to another window.
+
+- [ ] Right-click an app → Move or Move Focused Window. Labels follow Mission Control's current Desktop order, omit the source, and exclude full-screen Spaces.
 - [ ] Give the app windows on multiple Desktops. Move from one: only that source's eligible windows move. Other processes/apps, windows on other Desktops/displays, ordered-out windows, and all-Desktop windows remain unchanged.
 - [ ] Verify the active Desktop stays unchanged and icons update on source/destination panels after the move.
 - [ ] Delete/reorder a Desktop or switch Spaces while the menu is open: stale source/destination actions must not move unrelated windows.

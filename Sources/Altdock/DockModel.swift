@@ -161,14 +161,14 @@ final class DockModel: ObservableObject {
         refresh()
     }
 
-    func moveWindows(of application: NSRunningApplication, from source: UInt64, to destination: UInt64) {
+    func moveWindows(of application: NSRunningApplication, from source: UInt64, to destination: UInt64, scope: DesktopWindowMoveScope = .all) {
         guard !isMovingWindows, !isSwitchingSpace, !isFullScreenSpaceActive,
               !application.isTerminated, let bounds = displayBounds() else { return }
         isMovingWindows = true
         moveTask = Task {
             defer { isMovingWindows = false; if !Task.isCancelled { refresh() } }
             do {
-                _ = try await windowMover.move(processID: application.processIdentifier, from: source, to: destination, on: bounds)
+                _ = try await windowMover.move(processID: application.processIdentifier, from: source, to: destination, on: bounds, scope: scope)
             } catch is CancellationError {
                 return
             } catch {
