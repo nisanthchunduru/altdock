@@ -17,6 +17,66 @@ struct SystemDockSessionTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.record.path))
     }
 
+    @Test("Small native Dock settings are recorded before mutation and restored on normal quit")
+    func restoresSuppressionPreferences() throws {
+        let original = SystemDockSettings(orientation: "left", autoHide: false, suppression: .init(tileSize: 72.5, autoHideDelay: 0.35))
+        let fixture = try Fixture(original: original)
+        defer { fixture.clean() }
+        let session = fixture.session()
+        try session.begin { _ in
+            #expect(fixture.preferences.current == original)
+            let record = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.record)) as? [String: Any]
+            let saved = record?["original"] as? [String: Any]
+            let suppression = saved?["suppression"] as? [String: Any]
+            #expect(suppression?["tileSize"] as? Double == 72.5)
+            #expect(suppression?["autoHideDelay"] as? Double == 0.35)
+        }
+        #expect(fixture.preferences.current.suppression == .init(tileSize: 1, autoHideDelay: 1000))
+        try session.finish()
+        #expect(fixture.preferences.current == original)
+    }
+
+    @Test("The recovery helper restores icon size and auto-show delay after a crash")
+    func crashRestoresSuppression() throws {
+        let original = SystemDockSettings(orientation: "bottom", autoHide: true, suppression: .init(tileSize: 48, autoHideDelay: 2))
+        let fixture = try Fixture(original: original)
+        defer { fixture.clean() }
+        var session: SystemDockSession? = fixture.session()
+        var token: UUID?
+        try session?.begin { token = $0 }
+        session = nil
+        try fixture.session().restoreAfterExit(token: #require(token))
+        #expect(fixture.preferences.current == original)
+    }
+
+    @Test("Upgrading an older recovery record captures new keys without replacing saved position or auto-hide")
+    func upgradesLegacySuppressionBackup() throws {
+        let current = SystemDockSettings(orientation: "right", autoHide: true, suppression: .init(tileSize: 80, autoHideDelay: 0.75))
+        let fixture = try Fixture(original: current)
+        defer { fixture.clean() }
+        let legacy = "{\"token\":\"\(UUID().uuidString)\",\"original\":{\"orientation\":\"bottom\",\"autoHide\":false}}"
+        try Data(legacy.utf8).write(to: fixture.record)
+        let session = fixture.session()
+        try session.begin { _ in }
+        #expect(fixture.preferences.current.suppression == .init(tileSize: 1, autoHideDelay: 1000))
+        try session.finish()
+        #expect(fixture.preferences.current == SystemDockSettings(orientation: "bottom", autoHide: false, suppression: current.suppression))
+    }
+
+    @Test("Restarting after a crash never saves the temporary one-point icon size as the original")
+    func suppressionSurvivesRelaunch() throws {
+        let original = SystemDockSettings(orientation: "bottom", autoHide: false, suppression: .init(tileSize: 96, autoHideDelay: nil))
+        let fixture = try Fixture(original: original)
+        defer { fixture.clean() }
+        var first: SystemDockSession? = fixture.session()
+        try first?.begin { _ in }
+        first = nil
+        let second = fixture.session()
+        try second.begin { _ in }
+        try second.finish()
+        #expect(fixture.preferences.current == original)
+    }
+
     @Test("A recovered session that is already parked does not rewrite preferences")
     func alreadyConfigured() throws {
         let fixture = try Fixture()

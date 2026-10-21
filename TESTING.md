@@ -14,9 +14,9 @@ dist/Altdock.app/Contents/MacOS/Altdock --public-windows --list-spaces
 
 The core suites cover current-display filtering, off-screen exclusion in the public fallback, all-Spaces indexing (including shared and unvisited Spaces), window eligibility, deduplication, stable ordering, empty/unknown Spaces, negative display coordinates, and dock geometry. Native model tests use a fake tracker and clock to verify synchronous cached switches, absence of artificial empty publications, unknown-Space interaction blocking, rapid switches, and fallback settling. Dynamic loader tests cover missing frameworks and symbols.
 
-These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. Reservation tests cover tiled/floating/foreign-display geometry, negative coordinates, stable clearance, feedback suppression, retry limits, guarded restoration, partial-write rollback, and default-enabled preferences. System Dock tests use fake preference stores and isolated recovery directories; they cover normal exit, crash/relaunch, duplicate instances, missing keys, corrupt records, stale helpers, and restoration failures without changing the real Dock.
+These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. Reservation tests cover tiled/floating/foreign-display geometry, negative coordinates, stable clearance, feedback suppression, retry limits, guarded restoration, partial-write rollback, and default-enabled preferences. System Dock tests use fake preference stores, isolated test preference domains with no real Dock restart, and isolated recovery directories; they cover normal exit, crash/relaunch, duplicate instances, missing keys, corrupt records, stale helpers, and restoration failures without changing the real Dock.
 
-The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app now changes the system Dock's position/auto-hide and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
+The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app changes the system Dock's position, auto-hide, icon size, and auto-show delay, and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
 
 ## Signing checks
 
@@ -126,14 +126,16 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 ### System Dock borrowing and restoration
 
-- [ ] Record original native Dock position, auto-hide, and icon size. With an original bottom/left Dock, Altdock uses that edge and parks the native Dock on the right. With an original right Dock, Altdock stays right and parks the native Dock at the bottom. Auto-hide is enabled; no native size/magnification/icon/delay preferences change.
+- [ ] Record original native Dock position, auto-hide, icon size, and auto-show delay, including whether each key is absent. With an original bottom/left Dock, Altdock uses that edge and parks the native Dock on the right. With an original right Dock, Altdock stays right and parks the native Dock at the bottom. Auto-hide is enabled, native icons become 1 point, and auto-show delay becomes 1,000 seconds. Altdock keeps the pre-suppression size/footprint; native Dock items, magnification, and minimize/launch animations remain unchanged.
+- [ ] Open Mission Control: the native Dock is reduced to a small strip, not promised to disappear completely. Test different displays and native minimize/restore behavior.
 - [ ] Recover a crashed session whose native Dock is already parked: no unnecessary rewrite/restart, no recapture of the parked edge as Altdock's new original.
-- [ ] Quit normally: both original values return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
-- [ ] Force-quit only the main Altdock process: the helper restores both settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
+- [ ] Quit normally: all four original values/presence return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
+- [ ] Force-quit only the main Altdock process: the helper restores all four settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
 - [ ] For a controlled recovery test, terminate both processes, then relaunch and quit Altdock: restore the original pre-session settings, not the temporary right/auto-hide values.
 - [ ] Launch a second instance: it must not overwrite the existing original-settings record or change preferences on exit.
 - [ ] Confirm diagnostics (`--list-spaces`, `--list-current-space`) neither modify system Dock preferences nor request Accessibility.
-- [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the two system Dock settings have durable crash recovery.
+- [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the four borrowed system Dock settings have durable crash recovery.
+- [ ] Upgrade an older recovery record: preserve its saved position/auto-hide, capture original size/delay before changing them, and never mistake the new one-point size for the user's original appearance.
 
 ### App icon insertion/removal animations
 
@@ -163,7 +165,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Open enough apps to overflow the display. Every icon remains reachable by horizontal scrolling.
 - [ ] Use VoiceOver to identify the dock, app names, and active status.
 - [ ] Restart Altdock: display/auto-hide preferences persist, while native appearance is captured afresh after a normal quit. A crash recovery reuses its original appearance snapshot.
-- [ ] Confirm only the two intended system Dock preferences change while Altdock runs and both are restored on quit.
+- [ ] Confirm only the four intended system Dock preferences change while Altdock runs and all four are restored on quit.
 
 ### Displays, full screen, and lifecycle
 

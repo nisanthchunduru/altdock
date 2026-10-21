@@ -5,7 +5,7 @@
 - Show apps belonging to the selected display's current Space; retain a macOS Dock-like interface.
 - Cache all-Spaces window membership rather than emptying the dock during Space transitions.
 - Reserve room for Altdock **by default**, using Accessibility-based avoidance for maximized/tiled windows. Permission must still be granted through macOS; it cannot be silently enabled.
-- Capture the system Dock's original edge, base icon size and thickness before parking it. Altdock uses that edge and size, with per-Space length. Bottom/left originals park the system Dock on the right; right originals park it at the bottom. Enable auto-hide, restore original position/auto-hide on exit, and never modify native size/magnification/icons/delays.
+- Capture the system Dock's original edge, base icon size and thickness before parking it. Altdock uses that edge and size, with per-Space length. Bottom/left originals park the system Dock on the right; right originals park it at the bottom. Enable auto-hide; temporarily reduce native icons to 1 point and set a 1,000-second auto-show delay. Restore all four original settings on exit. Never modify native magnification, Dock items, or minimize/launch animation preferences.
 - Screen-space avoidance is not a WindowServer-wide reservation. Do not promise that every app or manually placed window will comply.
 
 ## Source review
@@ -18,7 +18,7 @@ Commit: `44bf925639e079c5edf8284fd8edc2c157349ee5` (GPLv3).
 
 - [WindowReservationService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/WindowReservationService.swift): reacts to the window registry's AX updates when resize mode and Accessibility are enabled. Requires overlap and at least two edges aligned with the screen's visible frame. Shrinks maximized/half/quarter-tiled windows while leaving ordinary floating windows alone. Uses a 250 ms per-window cooldown.
 - [WindowRegistry.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/WindowRegistry.swift): AX observers and position/size writes; attempts to refresh stale window handles.
-- [SystemDockVisibilityService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/SystemDockVisibilityService.swift): snapshots Dock preferences and has a watchdog restoration mechanism. Altdock should touch only the two settings its user requested, not this project's larger set of hide/delay/animation settings.
+- [SystemDockVisibilityService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/SystemDockVisibilityService.swift): snapshots Dock preferences and has a watchdog restoration mechanism. Altdock should touch only explicitly approved settings (now position, auto-hide, icon size, auto-show delay), not this project's larger set of animation settings.
 
 ### OpenBoringBar — broader bottom guard
 
@@ -61,11 +61,11 @@ InfyniDock's GitHub checkout (`5042fb5`) contained only a README, not implementa
 4. Revalidate identity and geometry before writing; preserve top/left/width. Check results rather than assuming AX success implies the requested size was accepted.
 5. Track original and last-applied rectangles per window. Suppress self-generated events; stop on external/manual changes or repeated competing writes. Never blindly restore a stale original frame.
 6. Do not resize windows each time an auto-hidden dock reveals. Reservation is suspended while Altdock is hidden or auto-hide is enabled.
-7. Normal exit/disable can safely restore unchanged frames. Force-quit recovery of arbitrary app windows is not guaranteed; the system Dock's two preferences have a separate durable restoration mechanism.
+7. Normal exit/disable can safely restore unchanged frames. Force-quit recovery of arbitrary app windows is not guaranteed; the system Dock's four borrowed preferences have a separate durable restoration mechanism.
 
 ## System Dock lifecycle
 
-Save the exact prior presence/value of `com.apple.dock` keys `orientation` and `autohide` before changing anything. Missing keys must be restored by deletion, not replaced by guessed defaults. Update keys individually; never replace the whole preference domain. Synchronize and restart the current user's system Dock only when values change.
+Save the exact prior presence/value of `com.apple.dock` keys `orientation`, `autohide`, `tilesize`, and `autohide-delay` before changing anything. Missing keys must be restored by deletion, not replaced by guessed defaults. Update keys individually; never replace the whole preference domain. Synchronize and restart the current user's system Dock only when values change.
 
 Use a persistent original-settings record and a session lock to prevent duplicate instances from overwriting the original snapshot. A lightweight child process can wait for that lock to be released on exit/crash and restore the recorded settings. A session token prevents an old child from restoring a newer session's settings. Normal quit also restores while holding the lock. A retained record allows recovery on next launch if both parent and guardian are killed or the machine loses power. Do not install a permanent LaunchAgent just for this.
 
@@ -84,7 +84,7 @@ Use a persistent original-settings record and a session lock to prevent duplicat
 - `ReservationLedger.swift`: per-window originals, last-applied frames, cooldown/retry bounds, manual-override suppression, and restoration guards.
 - `ReservationFrameTransaction.swift`: expected-frame validation, read-back verification, and guarded rollback of partial height changes.
 - `Sources/Altdock/Reservation/`: background actor, AX element access, per-app/window observers, and main-thread configuration/event coordination. Individual AX objects need their own messaging timeout: Apple's `AXUIElement.h` explicitly says an application object's timeout does **not** propagate to other objects, even equivalent ones.
-- `Sources/Altdock/SystemDock/`: two-key preference access plus durable session/guardian handling. The guardian is the same executable in a headless `--restore-dock-after-exit` mode, started before preferences are changed. Its waiting file lock is released by the OS if the owner dies. No accessibility permission is needed to restore these preferences.
+- `Sources/Altdock/SystemDock/`: four-key preference access plus durable session/guardian handling. The guardian is the same executable in a headless `--restore-dock-after-exit` mode, started before preferences are changed. Its waiting file lock is released by the OS if the owner dies. No accessibility permission is needed to restore these preferences.
 - `DockPreferences.reserveSpace`: missing preference means `true`; an explicit user opt-out remains persistent. Auto-hide and manually hiding Altdock suspend reservation instead of resizing on every reveal.
 - `Tests/AltdockCoreTests/Reservation*` and `Tests/AltdockTests/SystemDockSessionTests.swift`: deterministic safety tests, with isolated stores rather than live preference mutations.
 
@@ -160,7 +160,7 @@ For the measured native style, Altdock uses an 82-point panel plus the 8-point e
 
 `NativeDockAppearance` reads CoreDock tile size/orientation/rectangle and falls back to `tilesize` or 64-point icons. Hidden/magnified/unavailable native rectangles use a calibrated footprint of icon size + 26. References: [CoreDock getter declarations](https://gist.github.com/w0lfschild/90db263867f469738c01e9e2d937f874) and [Apple's documented 16–128 tilesize range](https://github.com/apple/device-management/blob/release/mdm/profiles/com.apple.dock.yaml).
 
-Layout, indicators, auto-hide zones, and reservation use the captured bottom/left/right edge. Left reservation changes x/width while retaining the right edge; right changes width; bottom changes height. Frame verification/rollback supports both axes and preflights writable position when a shift is needed. Native size/magnification preferences are never overwritten. Cross-edge and crash-recovery behavior is covered by deterministic tests; real side-dock/macOS variations still need acceptance testing.
+Layout, indicators, auto-hide zones, and reservation use the captured bottom/left/right edge. Left reservation changes x/width while retaining the right edge; right changes width; bottom changes height. Frame verification/rollback supports both axes and preflights writable position when a shift is needed. Altdock retains the original native size while the system Dock is temporarily reduced to 1 point; magnification preferences remain untouched. Cross-edge and crash-recovery behavior is covered by deterministic tests; real side-dock/macOS variations still need acceptance testing.
 
 ## Icon centering
 
@@ -255,6 +255,14 @@ A native AppKit lifecycle probe on macOS 26.7.1 confirmed the same window ID sur
 Before moving, the controller re-captures window ownership and checks fresh topology/membership. It submits only the specific returning window through the existing bridged mover; no activation, unminimize, resize, or active-Space calls. Later snapshots verify the destination with a two-second deadline; failure is logged and no move is re-submitted for that exit. Normal moves before a new full-screen cycle update the origin. All-Desktop membership clears exclusive origins; terminated processes clear records; absent ordinary records have a 60-second grace period, while missing full-screen identities retain their origin for the session. No disk persistence or app-name/geometry-only origin guesses. A recreated/newly full-screen window or a completely missed full-screen cycle cannot be reliably restored.
 
 Regression tests cover original/deleted/reordered Desktops, minimized windows, sibling isolation, normal/manual moves, repeated full-screen cycles, Split View, settling/reentry, uncertain reads, ownership changes, disappearing/recreated windows, bounded failure/verification, display removal, and raw-snapshot wiring without phantom dock icons. A native two-process probe using the actual controller/tracker and bridged operation injected a misplaced exit for a disposable window: its original membership was restored, it remained minimized, and the active Desktop stayed unchanged. At the normal 0.75-second polling interval, another run saw macOS itself correct the injected placement before observation; no Altdock correction was needed. These probes did not move user windows. Zoom-specific automation and real Desktop deletion/multi-monitor transitions remain manual acceptance checks.
+
+## Accepted native-Dock suppression
+
+The user accepted a thin remaining Mission Control strip. Altdock now combines its existing parking/auto-hide behavior with `tilesize=1` and `autohide-delay=1000`. A native test on macOS 26.7.1 showed these settings shrink the native Dock substantially but do not completely hide it in Mission Control. Sidebar 2.2.8 static binary inspection also found this size/delay pair; Altdock does not adopt its unrelated no-bouncing/minimize-effect changes.
+
+`SystemDockSettings.suppression` distinguishes an old record that never captured these preferences (`nil`) from a new record that captured both as absent (a present object with nil fields). On upgrade, a saved old position/auto-hide pair is preserved while current size/delay values are captured before any write. Applying an old record does not delete uncaptured keys. Appearance is captured before shrinking and retained through crash recovery. Reads reject invalid numeric values; writes retain existing forced-preference preflight, read-back verification and idempotence.
+
+Tests cover four-key restore, exact absence, non-default/fractional originals, old-record migration/restoration, crash/relaunch, unchanged settings, invalid reads and unrelated preferences. Native signed-app quit/relaunch verification confirmed all four values/presence restored exactly, original 64-point Altdock artwork retained, and one-point/1,000-second suppression reapplied only while running.
 
 ## Verification priorities
 

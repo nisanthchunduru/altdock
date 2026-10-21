@@ -1,16 +1,6 @@
 import AltdockCore
 import Foundation
 
-struct SystemDockSettings: Codable, Equatable {
-    let orientation: String?
-    let autoHide: Bool?
-
-    static func parked(replacing original: SystemDockSettings) -> SystemDockSettings {
-        let edge = DockEdge(rawValue: original.orientation ?? "bottom") ?? .bottom
-        return SystemDockSettings(orientation: edge.parkedSystemEdge.rawValue, autoHide: true)
-    }
-}
-
 protocol SystemDockPreferenceAccess {
     func read() throws -> SystemDockSettings
     func apply(_ settings: SystemDockSettings) throws
@@ -30,7 +20,13 @@ enum SystemDockError: LocalizedError {
 }
 
 struct SystemDockPreferences: SystemDockPreferenceAccess {
-    private let domain = "com.apple.dock" as CFString
+    private let domain: CFString
+    private let restart: () throws -> Void
+
+    init(domain: String = "com.apple.dock", restart: (() throws -> Void)? = nil) {
+        self.domain = domain as CFString
+        self.restart = restart ?? Self.restartSystemDock
+    }
 
     func read() throws -> SystemDockSettings {
         guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
@@ -41,11 +37,15 @@ struct SystemDockPreferences: SystemDockPreferenceAccess {
         guard orientation == nil || orientation is String, autoHide == nil || autoHide is NSNumber else {
             throw SystemDockError.backupInvalid
         }
-        return SystemDockSettings(orientation: orientation as? String, autoHide: (autoHide as? NSNumber)?.boolValue)
+        return SystemDockSettings(
+            orientation: orientation as? String, autoHide: (autoHide as? NSNumber)?.boolValue,
+            suppression: try SystemDockSuppression(tileSize: number(for: "tilesize"), autoHideDelay: number(for: "autohide-delay"))
+        )
     }
 
     func apply(_ settings: SystemDockSettings) throws {
         let current = try read()
+        let settings = settings.preservingUncapturedSuppression(from: current)
         guard current != settings else { return }
         var changes: [(String, CFPropertyList?)] = []
         if current.orientation != settings.orientation {
@@ -53,6 +53,14 @@ struct SystemDockPreferences: SystemDockPreferenceAccess {
         }
         if current.autoHide != settings.autoHide {
             changes.append(("autohide", settings.autoHide.map { $0 ? kCFBooleanTrue : kCFBooleanFalse }))
+        }
+        if let suppression = settings.suppression {
+            if current.suppression?.tileSize != suppression.tileSize {
+                changes.append(("tilesize", suppression.tileSize.map { NSNumber(value: $0) }))
+            }
+            if current.suppression?.autoHideDelay != suppression.autoHideDelay {
+                changes.append(("autohide-delay", suppression.autoHideDelay.map { NSNumber(value: $0) }))
+            }
         }
         for (key, _) in changes where CFPreferencesAppValueIsForced(key as CFString, domain) {
             throw SystemDockError.preferenceWriteFailed
@@ -63,6 +71,18 @@ struct SystemDockPreferences: SystemDockPreferenceAccess {
         guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost), try read() == settings else {
             throw SystemDockError.preferenceWriteFailed
         }
+        try restart()
+    }
+
+    private func number(for key: String) throws -> Double? {
+        guard let value = CFPreferencesCopyValue(key as CFString, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else { return nil }
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite else {
+            throw SystemDockError.backupInvalid
+        }
+        return number.doubleValue
+    }
+
+    private static func restartSystemDock() throws {
         let restart = Process()
         restart.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         restart.arguments = ["-u", NSUserName(), "Dock"]

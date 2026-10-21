@@ -37,7 +37,7 @@ final class SystemDockSession {
         try lock(wait: false)
         do {
             let existing = try readRecord()
-            let original = try existing?.original ?? preferences.read()
+            let original = try capturedOriginal(existing?.original)
             let appearance = existing?.appearance ?? appearanceProvider(original)
             let record = Record(token: UUID(), original: original, appearance: appearance)
             try JSONEncoder().encode(record).write(to: recordURL, options: .atomic)
@@ -75,6 +75,12 @@ final class SystemDockSession {
         child.standardOutput = FileHandle.nullDevice
         child.standardError = FileHandle.nullDevice
         try child.run()
+    }
+
+    private func capturedOriginal(_ saved: SystemDockSettings?) throws -> SystemDockSettings {
+        guard let saved else { return try preferences.read() }
+        if saved.suppression != nil { return saved }
+        return try saved.preservingUncapturedSuppression(from: preferences.read())
     }
 
     private func restore() throws {
