@@ -20,6 +20,7 @@ final class DockModel: ObservableObject {
     @Published private(set) var fullScreenSpaceIDs: Set<UInt64> = []
     @Published private(set) var desktopDestinations: [DesktopDestination] = []
     @Published private(set) var isMovingWindows = false
+    @Published private(set) var isCreatingWindow = false
 
     var isFullScreenSpaceActive: Bool { activeSpaceID.map { fullScreenSpaceIDs.contains($0) } ?? false }
     var trackingDescription: String { windowTracker.backendDescription }
@@ -35,7 +36,9 @@ final class DockModel: ObservableObject {
     }
 
     private let windowMover: DesktopWindowMover
+    private let windowCreator: ApplicationWindowCreator
     private var moveTask: Task<Void, Never>?
+    private var creationTask: Task<Void, Never>?
     private let displayBounds: () -> CGRect?
     private let windowTracker: any SpaceWindowTracking
     private let runningApplications: () -> [NSRunningApplication]
@@ -66,9 +69,11 @@ final class DockModel: ObservableObject {
         restoreWindow: @escaping (NSRunningApplication, SpaceWindow) -> Void = {
             ApplicationActivator.restoreMinimizedWindow($0, matching: $1)
         },
-        minimizedWindowEvents: (any MinimizedWindowObserving)? = nil
+        minimizedWindowEvents: (any MinimizedWindowObserving)? = nil,
+        windowCreator: ApplicationWindowCreator = ApplicationWindowCreator()
     ) {
         self.windowMover = windowMover
+        self.windowCreator = windowCreator
         self.displayBounds = displayBounds ?? { preferences.screen.map { CGDisplayBounds($0.displayID) } }
         self.windowTracker = windowTracker
         self.runningApplications = runningApplications
@@ -116,6 +121,7 @@ final class DockModel: ObservableObject {
         minimizationRefresh = nil
         minimizedWindowEvents?.stop()
         moveTask?.cancel()
+        creationTask?.cancel()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
     }
@@ -161,8 +167,26 @@ final class DockModel: ObservableObject {
         refresh()
     }
 
+    func createWindow(of application: NSRunningApplication, expectedSpaceID: UInt64?) {
+        guard !isCreatingWindow, !isMovingWindows, !isSwitchingSpace, !isFullScreenSpaceActive,
+              !application.isTerminated, let bounds = displayBounds() else { return }
+        guard expectedSpaceID == nil || windowTracker.activeSpaceID(on: bounds) == expectedSpaceID else { return }
+        isCreatingWindow = true
+        creationTask = Task {
+            defer { isCreatingWindow = false; if !Task.isCancelled { refresh() } }
+            do {
+                try Task.checkCancellation()
+                guard !isSwitchingSpace, displayBounds() == bounds,
+                      expectedSpaceID == nil || windowTracker.activeSpaceID(on: bounds) == expectedSpaceID else { return }
+                try await windowCreator.createWindow(for: application)
+            }
+            catch is CancellationError { return }
+            catch { NSAlert(error: error).runModal() }
+        }
+    }
+
     func moveWindows(of application: NSRunningApplication, from source: UInt64, to destination: UInt64, scope: DesktopWindowMoveScope = .all) {
-        guard !isMovingWindows, !isSwitchingSpace, !isFullScreenSpaceActive,
+        guard !isMovingWindows, !isCreatingWindow, !isSwitchingSpace, !isFullScreenSpaceActive,
               !application.isTerminated, let bounds = displayBounds() else { return }
         isMovingWindows = true
         moveTask = Task {

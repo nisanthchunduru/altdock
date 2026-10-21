@@ -71,9 +71,14 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Verify click activation, name-on-hover, and right-click Move to/Hide/Quit still work. Reordering must not change app windows' actual Desktop assignments.
 - [ ] Test native-sized overflowing docks by scrolling first, then dragging visible icons; no auto-scroll is implemented. Reduce Motion suppresses neighbor animation. Shared-panel compatibility mode does not reorder.
 
-### Moving windows between Desktops
+### Creating windows and moving focused windows
 
+- [ ] New Window on a supported app creates a distinct window without launching another process. Test New Finder Window, browser New Window, and a default-profile submenu. Test an app exposing only New Tab/New Document: do not invoke a different action by guessing ⌘N.
+- [ ] A single-window app or disabled New Window command reports an explanation without activation/duplicate-instance fallback. Missing Accessibility, unreadable menus, and an unconfirmed result must not cause repeated requests or automatic permission prompts.
 - [ ] With two windows of one app on this Desktop, focus each in turn and choose Move Focused Window. Only that focused window moves; siblings and the active Desktop stay put. Focus on another display/Space, minimized/hidden/shared windows, absent AX focus, stale source/destination and changed focus must reject rather than fall back to another window.
+- [ ] Check both new actions alongside Move. Duplicate creation/move requests are blocked while another window action is pending. Quit cancels pending verification and no late follow-up should create another window.
+
+### Moving windows between Desktops
 
 - [ ] Right-click an app → Move or Move Focused Window. Labels follow Mission Control's current Desktop order, omit the source, and exclude full-screen Spaces.
 - [ ] Give the app windows on multiple Desktops. Move from one: only that source's eligible windows move. Other processes/apps, windows on other Desktops/displays, ordered-out windows, and all-Desktop windows remain unchanged.

@@ -12,6 +12,7 @@ protocol DockSurface: AnyObject {
     func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout)
     func updateFocus(_ processID: Int32?)
     func updateDestinations(_ destinations: [DesktopDestination])
+    func updateWindowActions(isBusy: Bool)
     func attach(to spaceID: UInt64) -> Bool
     func show()
     func hide()
@@ -23,6 +24,7 @@ extension DockSurface {
         update(applications: applications, isUpdating: isUpdating, layout: layout)
     }
     func updateDestinations(_ destinations: [DesktopDestination]) {}
+    func updateWindowActions(isBusy: Bool) {}
 }
 
 private final class DockPanel: NSPanel {
@@ -45,7 +47,7 @@ final class NativeDockSurface: DockSurface {
     var isKeyWindow: Bool { panel.isKeyWindow }
     var windowNumber: Int { panel.windowNumber }
 
-    init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, reorderApplication: ((Int32, Int) -> Void)? = nil, restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil, moveFocusedWindow: ((NSRunningApplication, UInt64) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {
+    init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, reorderApplication: ((Int32, Int) -> Void)? = nil, restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil, createWindow: ((NSRunningApplication) -> Void)? = nil, moveFocusedWindow: ((NSRunningApplication, UInt64) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {
         self.placement = placement
         isSpaceBound = spaceID != nil
         panel = DockPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -66,7 +68,7 @@ final class NativeDockSurface: DockSurface {
         panel.isExcludedFromWindowsMenu = true
         panel.animationBehavior = .none
         panel.alphaValue = 0
-        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate, moveWindows: moveWindows, reorderApplication: reorderApplication, restoreMinimizedWindow: restoreMinimizedWindow, moveFocusedWindow: moveFocusedWindow))
+        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate, moveWindows: moveWindows, reorderApplication: reorderApplication, restoreMinimizedWindow: restoreMinimizedWindow, createWindow: createWindow, moveFocusedWindow: moveFocusedWindow))
         hostingView.sizingOptions = []
         panel.contentView = hostingView
     }
@@ -98,6 +100,7 @@ final class NativeDockSurface: DockSurface {
     }
 
     func updateDestinations(_ destinations: [DesktopDestination]) { presentation.updateDestinations(destinations) }
+    func updateWindowActions(isBusy: Bool) { presentation.updateWindowActions(isBusy: isBusy) }
 
     func updateFocus(_ processID: Int32?) {
         frameAnimator.reconcile()

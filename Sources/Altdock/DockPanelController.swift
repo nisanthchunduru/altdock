@@ -46,6 +46,8 @@ final class DockPanelController: ObservableObject {
                     { [weak model] processID, index in model?.reorderApplication(processID, to: index, on: source) }
                 }, restoreMinimizedWindow: { [weak model] item in
                     model?.restoreMinimizedWindow(item, expectedSpaceID: spaceID)
+                }, createWindow: { [weak model] application in
+                    model?.createWindow(of: application, expectedSpaceID: spaceID)
                 }, moveFocusedWindow: spaceID.map { source in
                     { [weak model] application, destination in
                         model?.moveWindows(of: application, from: source, to: destination, scope: .focused)
@@ -63,7 +65,7 @@ final class DockPanelController: ObservableObject {
             .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
         model.$fullScreenSpaceIDs.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
-        model.$desktopDestinations.combineLatest(model.$isMovingWindows).receive(on: RunLoop.main)
+        model.$desktopDestinations.combineLatest(model.$isMovingWindows, model.$isCreatingWindow).receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateMoveDestinations() }.store(in: &subscriptions)
         model.$applications.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
@@ -143,9 +145,12 @@ final class DockPanelController: ObservableObject {
 
     private func updateMoveDestinations() {
         guard !stopped else { return }
+        let busy = model.isMovingWindows || model.isCreatingWindow
         for (source, surface) in surfaces {
-            surface.updateDestinations(model.isMovingWindows ? [] : model.desktopDestinations.filter { $0.id != source })
+            surface.updateDestinations(busy ? [] : model.desktopDestinations.filter { $0.id != source })
+            surface.updateWindowActions(isBusy: busy)
         }
+        sharedSurface?.updateWindowActions(isBusy: busy)
     }
 
     func updateCurrentSpace() {
@@ -160,6 +165,7 @@ final class DockPanelController: ObservableObject {
                 layout: display.layout(applicationCount: model.applications.count + model.minimizedWindows.count, style: preferences.style)
             )
             surface.updateFocus(model.activeProcessID)
+            surface.updateWindowActions(isBusy: model.isMovingWindows || model.isCreatingWindow)
         }
         let description = model.isFullScreenSpaceActive ? "Dock hidden in full-screen Space" : currentKey == 0
             ? (usePerSpacePanels ? "Shared panel · placement/data fallback" : "Shared panel · compatibility mode")

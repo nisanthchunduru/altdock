@@ -9,6 +9,7 @@ final class DockPresentation: ObservableObject {
     @Published private(set) var isUpdating = false
     @Published private(set) var style = DockStyle()
     @Published private(set) var destinations: [DesktopDestination] = []
+    @Published private(set) var isPerformingWindowAction = false
     var iconSize: CGFloat { style.iconSize }
 
     func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow] = [], isUpdating: Bool, style: DockStyle) {
@@ -16,6 +17,10 @@ final class DockPresentation: ObservableObject {
         if self.minimizedWindows != minimizedWindows { self.minimizedWindows = minimizedWindows }
         if self.isUpdating != isUpdating { self.isUpdating = isUpdating }
         if self.style != style { self.style = style }
+    }
+
+    func updateWindowActions(isBusy: Bool) {
+        if isPerformingWindowAction != isBusy { isPerformingWindowAction = isBusy }
     }
 
     func updateDestinations(_ destinations: [DesktopDestination]) {
