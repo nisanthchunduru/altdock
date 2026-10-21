@@ -9,6 +9,7 @@ protocol DockSurface: AnyObject {
     var isKeyWindow: Bool { get }
     var windowNumber: Int { get }
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout)
+    func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout)
     func updateFocus(_ processID: Int32?)
     func updateDestinations(_ destinations: [DesktopDestination])
     func attach(to spaceID: UInt64) -> Bool
@@ -18,6 +19,9 @@ protocol DockSurface: AnyObject {
 }
 
 extension DockSurface {
+    func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout) {
+        update(applications: applications, isUpdating: isUpdating, layout: layout)
+    }
     func updateDestinations(_ destinations: [DesktopDestination]) {}
 }
 
@@ -41,7 +45,7 @@ final class NativeDockSurface: DockSurface {
     var isKeyWindow: Bool { panel.isKeyWindow }
     var windowNumber: Int { panel.windowNumber }
 
-    init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, reorderApplication: ((Int32, Int) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {
+    init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, reorderApplication: ((Int32, Int) -> Void)? = nil, restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {
         self.placement = placement
         isSpaceBound = spaceID != nil
         panel = DockPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -62,25 +66,30 @@ final class NativeDockSurface: DockSurface {
         panel.isExcludedFromWindowsMenu = true
         panel.animationBehavior = .none
         panel.alphaValue = 0
-        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate, moveWindows: moveWindows, reorderApplication: reorderApplication))
+        let hostingView = NSHostingView(rootView: DockView(presentation: presentation, tooltip: tooltip, activate: activate, moveWindows: moveWindows, reorderApplication: reorderApplication, restoreMinimizedWindow: restoreMinimizedWindow))
         hostingView.sizingOptions = []
         panel.contentView = hostingView
     }
 
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout) {
-        if isUpdating || presentation.applications.map(\.id) != applications.map(\.id) || lastLayout != layout { tooltip.hide() }
-        if applications.isEmpty { hide() }
+        update(applications: applications, minimizedWindows: [], isUpdating: isUpdating, layout: layout)
+    }
+
+    func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout) {
+        let minimizedChanged = presentation.minimizedWindows.map(\.id) != minimizedWindows.map(\.id)
+        if isUpdating || presentation.applications.map(\.id) != applications.map(\.id) || presentation.minimizedWindows != minimizedWindows || lastLayout != layout { tooltip.hide() }
+        if applications.isEmpty && minimizedWindows.isEmpty { hide() }
         let animate = DockMembershipAnimation.shouldAnimate(
             previousIDs: presentation.applications.map(\.id), nextIDs: applications.map(\.id),
             previousLayout: lastLayout, nextLayout: layout,
             isSpaceBound: isSpaceBound, isOrdered: isOrdered, isOnActiveSpace: panel.isOnActiveSpace,
             wasUpdating: presentation.isUpdating, isUpdating: isUpdating,
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, additionalMembershipChanged: minimizedChanged
         )
         var transaction = Transaction(animation: animate ? DockMembershipAnimation.animation : nil)
         transaction.disablesAnimations = !animate
         withTransaction(transaction) {
-            presentation.update(applications: applications, isUpdating: isUpdating, style: layout.style)
+            presentation.update(applications: applications, minimizedWindows: minimizedWindows, isUpdating: isUpdating, style: layout.style)
         }
         let frameChanged = lastLayout?.frame != layout.frame
         lastLayout = layout
@@ -98,7 +107,7 @@ final class NativeDockSurface: DockSurface {
 
     func show() {
         frameAnimator.reconcile()
-        guard !presentation.applications.isEmpty else { hide(); return }
+        guard !presentation.applications.isEmpty || !presentation.minimizedWindows.isEmpty else { hide(); return }
         guard !isOrdered else { return }
         panel.alphaValue = 1
         panel.orderFrontRegardless()

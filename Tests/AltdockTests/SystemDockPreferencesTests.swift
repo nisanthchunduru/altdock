@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Native Dock suppression preserves exactly the preferences it borrows")
 struct SystemDockPreferencesTests {
-    @Test("Applying and restoring changes four keys without touching Dock items or minimize behavior")
+    @Test("Applying and restoring changes five keys while leaving Dock items untouched")
     func roundTrip() throws {
         let fixture = PreferencesFixture()
         defer { fixture.clean() }
@@ -17,6 +17,7 @@ struct SystemDockPreferencesTests {
         let original = try fixture.preferences.read()
         try fixture.preferences.apply(.parked(replacing: original))
         #expect(try fixture.preferences.read().suppression == .init(tileSize: 1, autoHideDelay: 1000))
+        #expect(fixture.value("mineffect") as? String == "scale")
         try fixture.preferences.apply(original)
         #expect(try fixture.preferences.read() == original)
         #expect(fixture.value("mineffect") as? String == "genie")
@@ -31,7 +32,7 @@ struct SystemDockPreferencesTests {
         let original = try fixture.preferences.read()
         try fixture.preferences.apply(.parked(replacing: original))
         try fixture.preferences.apply(original)
-        for key in ["orientation", "autohide", "tilesize", "autohide-delay"] {
+        for key in ["orientation", "autohide", "tilesize", "autohide-delay", "mineffect"] {
             #expect(fixture.value(key) == nil)
         }
     }
@@ -42,11 +43,13 @@ struct SystemDockPreferencesTests {
         defer { fixture.clean() }
         fixture.set("tilesize", NSNumber(value: 88))
         fixture.set("autohide-delay", NSNumber(value: 3))
+        fixture.set("mineffect", "suck" as CFString)
         let legacy = try JSONDecoder().decode(SystemDockSettings.self, from: Data("{\"orientation\":\"bottom\",\"autoHide\":false}".utf8))
         #expect(legacy.suppression == nil)
         try fixture.preferences.apply(legacy)
         #expect(fixture.value("tilesize") as? Double == 88)
         #expect(fixture.value("autohide-delay") as? Double == 3)
+        #expect(fixture.value("mineffect") as? String == "suck")
     }
 
     @Test("New records distinguish captured missing preferences from uncaptured legacy preferences")
@@ -56,6 +59,8 @@ struct SystemDockPreferencesTests {
         #expect(decoded.suppression != nil)
         #expect(decoded.suppression?.tileSize == nil)
         #expect(decoded.suppression?.autoHideDelay == nil)
+        #expect(decoded.minimization != nil)
+        #expect(decoded.minimization?.effect == nil)
     }
 
     @Test("Unchanged parked preferences do not restart the system Dock again")

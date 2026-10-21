@@ -1,6 +1,7 @@
 import CoreGraphics
 
 public struct DockIconLayout: Equatable, Sendable {
+    public static let spacing: CGFloat = 6
     public let size: CGSize
     public let icon: CGRect
     public let indicator: CGRect

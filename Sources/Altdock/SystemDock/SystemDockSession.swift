@@ -79,8 +79,8 @@ final class SystemDockSession {
 
     private func capturedOriginal(_ saved: SystemDockSettings?) throws -> SystemDockSettings {
         guard let saved else { return try preferences.read() }
-        if saved.suppression != nil { return saved }
-        return try saved.preservingUncapturedSuppression(from: preferences.read())
+        if saved.suppression != nil && saved.minimization != nil { return saved }
+        return try saved.preservingUncapturedPreferences(from: preferences.read())
     }
 
     private func restore() throws {

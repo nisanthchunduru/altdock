@@ -16,7 +16,7 @@ The core suites cover current-display filtering, off-screen exclusion in the pub
 
 These are deterministic unit tests, not proof of macOS Space reporting or permission-dependent app activation. Reservation tests cover tiled/floating/foreign-display geometry, negative coordinates, stable clearance, feedback suppression, retry limits, guarded restoration, partial-write rollback, and default-enabled preferences. System Dock tests use fake preference stores, isolated test preference domains with no real Dock restart, and isolated recovery directories; they cover normal exit, crash/relaunch, duplicate instances, missing keys, corrupt records, stale helpers, and restoration failures without changing the real Dock.
 
-The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app changes the system Dock's position, auto-hide, icon size, and auto-show delay, and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
+The checklist below must also be performed on a real Mac. It is a test plan, not a record that every scenario has passed. Starting the app borrows the system Dock's position, auto-hide, icon size, auto-show delay, and minimize effect, and may resize eligible windows after Accessibility is granted; quitting should restore them as described in README.
 
 ## Signing checks
 
@@ -45,7 +45,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] With two Chrome instances whose real browser windows are on other Desktops, confirm their retained ordered-out helper windows no longer generate Chrome icons on an otherwise Chrome-free Desktop.
 - [ ] Run `--list-spaces` without visiting other Desktops: their ordered-in browser windows must still be cached. Switching there should reveal the correct icons without a new on-screen-only discovery delay.
 - [ ] Create a small but ordered-in normal window: it must still qualify. No minimum-height workaround should suppress legitimate small windows.
-- [ ] Hide/restore or close/reopen a window: membership updates with ordering state. Genuine ordered-out minimized/hidden windows are currently omitted, pending explicit AX support.
+- [ ] Minimize an app's only window: its icon stays on the same Desktop. Click to restore it, including when the app remains active and remembers that minimized window as focused. Check an app already minimized before Altdock starts, windows on other displays/Desktops, and closing a minimized window. Merely hidden non-minimized windows and ordered-out auxiliaries must not become phantom icons. Missing Accessibility/public fallback must not guess minimized membership.
 
 ### Persistent Space-bound panels
 
@@ -91,6 +91,17 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Restart Altdock while a window is full-screen, or use an app that destroys/recreates its window on exit: do not guess a sibling's origin. History is session-only and requires the original window identity to have been observed before full screen.
 - [ ] In `--public-windows` mode, no automatic return moves occur. Failed private moves log an unverified/rejected return without repeated submissions or permission prompts.
 
+### Separate minimized-window tiles
+
+- [ ] Verify equal separator spacing between the preceding app icon's visible artwork and the first minimized window card at bottom/left/right edges and different native icon sizes. Divider placement must not change total dock length, tile hit targets, or app drag spacing.
+
+- [ ] Minimize and restore windows from already-running and newly launched apps: tiles start updating from AX events rather than waiting for the next 750ms scan. Repeat with reservation disabled and auto-hide enabled. Unsupported/missing Accessibility must retain periodic fallback without prompting; bursts should not queue multiple redundant scans or survive quit.
+
+- [ ] Minimize two separate windows of the same app. Both get individual title/app-badge tiles after the app section. Hover reveals full titles; click or right-click Restore brings back only the selected window, leaving its minimized sibling untouched.
+- [ ] Restore or close one window outside Altdock: remove only that tile, resize the panel, and preserve the remaining tile order and app icon. Change a minimized window's title and verify its label updates without reordering.
+- [ ] Switch Desktops/displays with minimized windows: show only local tiles, including cached destination tiles during transitions. Stale clicks from outgoing panels, missing snapshots, closed windows and already-restored targets must not raise another window.
+- [ ] Test long/missing titles, bottom/left/right edges, overflowing docks, Reduce Motion, and app drag reordering alongside the fixed minimized section. These tiles are not live screenshots; no Screen Recording prompt should appear.
+
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.
@@ -126,16 +137,16 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 
 ### System Dock borrowing and restoration
 
-- [ ] Record original native Dock position, auto-hide, icon size, and auto-show delay, including whether each key is absent. With an original bottom/left Dock, Altdock uses that edge and parks the native Dock on the right. With an original right Dock, Altdock stays right and parks the native Dock at the bottom. Auto-hide is enabled, native icons become 1 point, and auto-show delay becomes 1,000 seconds. Altdock keeps the pre-suppression size/footprint; native Dock items, magnification, and minimize/launch animations remain unchanged.
+- [ ] Record original native Dock position, auto-hide, icon size, auto-show delay, and minimize effect, including absent keys. Altdock and the native Dock both use the original edge. Auto-hide is enabled, native icons become 1 point, auto-show delay becomes 1,000 seconds, and minimize effect becomes Scale. Altdock keeps the pre-suppression size/footprint; native Dock items, magnification, minimize-to-application, and launch animations remain unchanged. Verify minimization travels toward that edge; it is faster, not animation-free.
 - [ ] Open Mission Control: the native Dock is reduced to a small strip, not promised to disappear completely. Test different displays and native minimize/restore behavior.
 - [ ] Recover a crashed session whose native Dock is already parked: no unnecessary rewrite/restart, no recapture of the parked edge as Altdock's new original.
-- [ ] Quit normally: all four original values/presence return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
-- [ ] Force-quit only the main Altdock process: the helper restores all four settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
+- [ ] Quit normally: all five original values/presence return, and `~/Library/Application Support/Altdock/system-dock.json` is removed after successful restoration. No guardian remains.
+- [ ] Force-quit only the main Altdock process: the helper restores all five settings. The helper has `--restore-dock-after-exit` in its arguments; killing it as well prevents immediate recovery.
 - [ ] For a controlled recovery test, terminate both processes, then relaunch and quit Altdock: restore the original pre-session settings, not the temporary right/auto-hide values.
 - [ ] Launch a second instance: it must not overwrite the existing original-settings record or change preferences on exit.
 - [ ] Confirm diagnostics (`--list-spaces`, `--list-current-space`) neither modify system Dock preferences nor request Accessibility.
-- [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the four borrowed system Dock settings have durable crash recovery.
-- [ ] Upgrade an older recovery record: preserve its saved position/auto-hide, capture original size/delay before changing them, and never mistake the new one-point size for the user's original appearance.
+- [ ] Do not expect arbitrary application-window frames to be restored after force quit; only the five borrowed system Dock settings have durable crash recovery.
+- [ ] Upgrade an older recovery record: preserve its saved position/auto-hide, capture original size/delay/minimize effect before changing them, and never mistake the new one-point size for the user's original appearance.
 
 ### App icon insertion/removal animations
 
@@ -165,7 +176,7 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Open enough apps to overflow the display. Every icon remains reachable by horizontal scrolling.
 - [ ] Use VoiceOver to identify the dock, app names, and active status.
 - [ ] Restart Altdock: display/auto-hide preferences persist, while native appearance is captured afresh after a normal quit. A crash recovery reuses its original appearance snapshot.
-- [ ] Confirm only the four intended system Dock preferences change while Altdock runs and all four are restored on quit.
+- [ ] Confirm only the five intended system Dock preferences can change while Altdock runs and all five are restored on quit.
 
 ### Displays, full screen, and lifecycle
 

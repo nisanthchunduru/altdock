@@ -8,10 +8,13 @@ public struct SpaceWindow: Equatable, Sendable {
     public let layer: Int
     public let alpha: Double
     public let isOnScreen: Bool
+    public let isMinimized: Bool
+    public let title: String?
 
     public init(
         id: UInt32, processID: Int32, bounds: CGRect,
-        layer: Int = 0, alpha: Double = 1, isOnScreen: Bool = true
+        layer: Int = 0, alpha: Double = 1, isOnScreen: Bool = true,
+        isMinimized: Bool = false, title: String? = nil
     ) {
         self.id = id
         self.processID = processID
@@ -19,6 +22,8 @@ public struct SpaceWindow: Equatable, Sendable {
         self.layer = layer
         self.alpha = alpha
         self.isOnScreen = isOnScreen
+        self.isMinimized = isMinimized
+        self.title = title
     }
 }
 

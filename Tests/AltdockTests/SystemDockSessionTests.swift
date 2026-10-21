@@ -5,7 +5,7 @@ import Testing
 
 @Suite("System Dock settings are borrowed, never lost")
 struct SystemDockSessionTests {
-    @Test("Launch applies right/auto-hide and normal exit restores the original settings")
+    @Test("Launch suppresses the native Dock on its original edge and normal exit restores its settings")
     func normalLifecycle() throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
@@ -77,6 +77,44 @@ struct SystemDockSessionTests {
         #expect(fixture.preferences.current == original)
     }
 
+    @Test("Normal quit and crash recovery both restore the original minimize effect")
+    func restoresMinimizeEffect() throws {
+        for crashed in [false, true] {
+            let original = SystemDockSettings(orientation: "left", autoHide: false, minimization: .init(effect: "suck"))
+            let fixture = try Fixture(original: original)
+            defer { fixture.clean() }
+            var session: SystemDockSession? = fixture.session()
+            var token: UUID?
+            try session?.begin { token = $0 }
+            #expect(fixture.preferences.current.minimization?.effect == "scale")
+            #expect(fixture.preferences.current.orientation == "left")
+            if crashed {
+                session = nil
+                try fixture.session().restoreAfterExit(token: #require(token))
+            } else { try session?.finish() }
+            #expect(fixture.preferences.current == original)
+        }
+    }
+
+    @Test("A four-key recovery record captures the unmodified minimize effect before applying Scale")
+    func upgradesMinimizeBackup() throws {
+        let original = SystemDockSettings(orientation: "bottom", autoHide: false, suppression: .init(tileSize: 64, autoHideDelay: 0.5), minimization: .init(effect: "genie"))
+        let fixture = try Fixture(original: original)
+        defer { fixture.clean() }
+        fixture.preferences.current = SystemDockSettings(orientation: "right", autoHide: true, suppression: .init(tileSize: 1, autoHideDelay: 1000), minimization: .init(effect: "genie"))
+        let legacy = "{\"token\":\"\(UUID().uuidString)\",\"original\":{\"orientation\":\"bottom\",\"autoHide\":false,\"suppression\":{\"tileSize\":64,\"autoHideDelay\":0.5}}}"
+        try Data(legacy.utf8).write(to: fixture.record)
+        let session = fixture.session()
+        try session.begin { _ in
+            let record = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.record)) as? [String: Any]
+            let saved = record?["original"] as? [String: Any]
+            #expect((saved?["minimization"] as? [String: String])?["effect"] == "genie")
+        }
+        #expect(fixture.preferences.current.minimization?.effect == "scale")
+        try session.finish()
+        #expect(fixture.preferences.current == original)
+    }
+
     @Test("A recovered session that is already parked does not rewrite preferences")
     func alreadyConfigured() throws {
         let fixture = try Fixture()
@@ -91,14 +129,15 @@ struct SystemDockSessionTests {
         try session.finish()
     }
 
-    @Test("Original edge is retained for Altdock and the system Dock is parked elsewhere", arguments: DockEdge.allCases)
-    func parksAwayFromOriginalEdge(_ edge: DockEdge) throws {
+    @Test("The tiny system Dock shares Altdock's original edge so Scale minimizes in the same direction", arguments: DockEdge.allCases)
+    func keepsOriginalEdge(_ edge: DockEdge) throws {
         let fixture = try Fixture(original: SystemDockSettings(orientation: edge.rawValue, autoHide: false))
         defer { fixture.clean() }
         let session = fixture.session()
         try session.begin { _ in }
         #expect(session.dockStyle?.edge == edge)
-        #expect(fixture.preferences.current.orientation == edge.parkedSystemEdge.rawValue)
+        #expect(fixture.preferences.current.orientation == edge.rawValue)
+        #expect(fixture.preferences.current.minimization?.effect == "scale")
         #expect(fixture.preferences.current.autoHide == true)
         try session.finish()
         #expect(fixture.preferences.current == fixture.original)
@@ -133,7 +172,7 @@ struct SystemDockSessionTests {
         let session = fixture.session()
         try session.begin { _ in }
         #expect(session.dockStyle?.edge == .right)
-        #expect(fixture.preferences.current.orientation == "bottom")
+        #expect(fixture.preferences.current.orientation == "right")
         try session.finish()
         #expect(fixture.preferences.current == fixture.original)
     }

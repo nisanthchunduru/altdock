@@ -10,6 +10,7 @@ struct DockView: View {
     let activate: (NSRunningApplication) -> Void
     var moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil
     var reorderApplication: ((Int32, Int) -> Void)? = nil
+    var restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil
     @StateObject private var drag = DockIconDragState()
     @GestureState private var dragGestureActive = false
 
@@ -33,14 +34,14 @@ struct DockView: View {
             Group {
                 if style.edge.isVertical {
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 6) { icons(panelSize: geometry.size) }
+                        VStack(spacing: DockIconLayout.spacing) { icons(panelSize: geometry.size); minimizedIcons }
                             .padding(.vertical, 12)
                             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: drag.preview)
                     }
                     .transition(reduceMotion ? .identity : .opacity)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) { icons(panelSize: geometry.size) }
+                        HStack(spacing: DockIconLayout.spacing) { icons(panelSize: geometry.size); minimizedIcons }
                             .padding(.horizontal, 12)
                             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: drag.preview)
                     }
@@ -50,6 +51,7 @@ struct DockView: View {
         }
         .coordinateSpace(name: "altdock-panel")
         .onChange(of: presentation.applications.map(\.id)) { _ in drag.cancel() }
+        .onChange(of: presentation.minimizedWindows.map(\.id)) { _ in drag.cancel() }
         .onChange(of: presentation.isUpdating) { updating in if updating { drag.cancel() } }
         .onChange(of: dragGestureActive) { active in if !active { drag.cancel() } }
         .onDisappear { drag.cancel() }
@@ -60,7 +62,27 @@ struct DockView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.3), lineWidth: 0.5).allowsHitTesting(false)
         }
-        .accessibilityLabel("Altdock, applications in this Space")
+        .accessibilityLabel("Altdock, applications and minimized windows in this Space")
+    }
+
+    private var precedingIconTrailingInset: CGFloat {
+        let lastID = drag.processID == nil ? presentation.applications.last?.id : drag.preview.last
+        guard let application = presentation.applications.first(where: { $0.id == lastID }) else { return 0 }
+        return DockIconArtwork.trailingInset(image: application.icon, style: style)
+    }
+
+    private var minimizedIcons: some View {
+        ForEach(presentation.minimizedWindows) { window in
+            DockMinimizedWindowIcon(window: window, style: style, startsSection: window.id == presentation.minimizedWindows.first?.id,
+                                    precedingIconTrailingInset: window.id == presentation.minimizedWindows.first?.id ? precedingIconTrailingInset : 0) {
+                guard !drag.suppressesClick else { return }
+                tooltip.hide()
+                restoreMinimizedWindow?(window)
+            }
+            .disabled(restoreMinimizedWindow == nil)
+            .background(DockHoverAnchor(name: window.name, edge: style.edge, enabled: !presentation.isUpdating && drag.processID == nil, tooltip: tooltip))
+            .transition(iconTransition)
+        }
     }
 
     private func icons(panelSize: CGSize) -> some View {

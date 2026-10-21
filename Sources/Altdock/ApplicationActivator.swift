@@ -13,7 +13,7 @@ enum ApplicationActivator {
         var selected: Access.Window?
         if access.isTrusted {
             if let focused = access.focusedWindow(), localWindows.contains(where: { access.matches(focused, window: $0) }) {
-                if access.isActive && !access.isHidden { return }
+                if access.isActive && !access.isHidden && access.isMinimized(focused) == false { return }
                 selected = focused
             } else {
                 let accessible = access.windows()
@@ -27,6 +27,19 @@ enum ApplicationActivator {
         }
         access.unhide()
         if let selected { access.restoreAndRaise(selected) }
+        access.activate()
+    }
+
+    static func restoreMinimizedWindow(_ application: NSRunningApplication, matching window: SpaceWindow) {
+        restoreMinimizedWindow(matching: window, access: NativeApplicationActivation(application: application))
+    }
+
+    static func restoreMinimizedWindow<Access: ApplicationActivationAccess>(matching window: SpaceWindow, access: Access) {
+        guard !access.isTerminated, access.isTrusted, window.processID == access.processID,
+              let selected = access.windows().first(where: { access.matches($0, window: window) }),
+              access.isMinimized(selected) == true else { return }
+        access.unhide()
+        access.restoreAndRaise(selected)
         access.activate()
     }
 

@@ -11,6 +11,7 @@ protocol ApplicationActivationAccess {
     var isHidden: Bool { get }
     var isTrusted: Bool { get }
     func focusedWindow() -> Window?
+    func isMinimized(_ window: Window) -> Bool?
     func windows() -> [Window]
     func matches(_ element: Window, window: SpaceWindow) -> Bool
     func restoreAndRaise(_ window: Window)
@@ -45,6 +46,13 @@ final class NativeApplicationActivation: ApplicationActivationAccess {
         let focused = value as! AXUIElement
         AXUIElementSetMessagingTimeout(focused, 0.2)
         return focused
+    }
+
+    func isMinimized(_ window: AXUIElement) -> Bool? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == CFBooleanGetTypeID() else { return nil }
+        return value as? Bool
     }
 
     func windows() -> [AXUIElement] {

@@ -5,7 +5,6 @@ public enum DockEdge: String, Codable, CaseIterable, Sendable {
     case bottom, left, right
 
     public var isVertical: Bool { self != .bottom }
-    public var parkedSystemEdge: DockEdge { self == .right ? .bottom : .right }
 }
 
 public struct DockStyle: Codable, Equatable, Sendable {

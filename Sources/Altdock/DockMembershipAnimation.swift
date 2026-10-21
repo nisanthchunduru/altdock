@@ -10,9 +10,9 @@ enum DockMembershipAnimation {
         previousIDs: [Int32], nextIDs: [Int32],
         previousLayout: DockPanelLayout?, nextLayout: DockPanelLayout,
         isSpaceBound: Bool, isOrdered: Bool, isOnActiveSpace: Bool,
-        wasUpdating: Bool, isUpdating: Bool, reduceMotion: Bool
+        wasUpdating: Bool, isUpdating: Bool, reduceMotion: Bool, additionalMembershipChanged: Bool = false
     ) -> Bool {
-        guard !previousIDs.isEmpty, !nextIDs.isEmpty, previousIDs != nextIDs, let previousLayout,
+        guard !previousIDs.isEmpty, !nextIDs.isEmpty, previousIDs != nextIDs || additionalMembershipChanged, let previousLayout,
               previousLayout.style == nextLayout.style,
               isSpaceBound, isOrdered, isOnActiveSpace,
               !wasUpdating, !isUpdating, !reduceMotion else { return false }

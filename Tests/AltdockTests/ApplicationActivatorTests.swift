@@ -65,6 +65,48 @@ struct ApplicationActivatorTests {
         #expect(access.effects == ["unhide", "raise:2", "activate"])
     }
 
+    @Test("A remembered focused window that is minimized is restored even when the app is already active")
+    func restoresFocusedMinimizedWindow() {
+        let access = FakeActivationAccess()
+        access.focused = 2
+        access.minimized = true
+        ApplicationActivator.activate(matching: windows, access: access)
+        #expect(access.effects == ["unhide", "raise:2", "activate"])
+    }
+
+    @Test("Unknown minimized state does not turn a restore request into a no-op")
+    func unknownMinimizedState() {
+        let access = FakeActivationAccess()
+        access.minimized = nil
+        ApplicationActivator.activate(matching: windows, access: access)
+        #expect(access.effects == ["unhide", "raise:1", "activate"])
+    }
+
+    @Test("A minimized-window tile restores its selected sibling, not the app's remembered focused window")
+    func restoresSelectedSibling() {
+        let access = FakeActivationAccess()
+        access.focused = 1
+        access.minimized = true
+        ApplicationActivator.restoreMinimizedWindow(matching: windows[1], access: access)
+        #expect(access.effects == ["unhide", "raise:2", "activate"])
+        #expect(access.focusQueries == 0)
+    }
+
+    @Test("An explicit restore does nothing if the target is gone, already restored, unreadable, or inaccessible")
+    func rejectsUnavailableRestoreTarget() {
+        for state in 0..<5 {
+            let access = FakeActivationAccess()
+            access.minimized = true
+            if state == 0 { access.accessible = [1] }
+            if state == 1 { access.minimized = false }
+            if state == 2 { access.minimized = nil }
+            if state == 3 { access.isTrusted = false }
+            if state == 4 { access.isTerminated = true }
+            ApplicationActivator.restoreMinimizedWindow(matching: windows[1], access: access)
+            #expect(access.effects.isEmpty)
+        }
+    }
+
     @Test("No Accessibility grant preserves normal macOS activation without prompting or querying AX")
     func noPermission() {
         let access = FakeActivationAccess()
@@ -110,12 +152,14 @@ private final class FakeActivationAccess: ApplicationActivationAccess {
     var isHidden = false
     var isTrusted = true
     var focused: UInt32? = 1
+    var minimized: Bool? = false
     var accessible: [UInt32] = [1, 2]
     var effects: [String] = []
     var focusQueries = 0
     var windowQueries = 0
 
     func focusedWindow() -> UInt32? { focusQueries += 1; return focused }
+    func isMinimized(_ window: UInt32) -> Bool? { minimized }
     func windows() -> [UInt32] { windowQueries += 1; return accessible }
     func matches(_ element: UInt32, window: SpaceWindow) -> Bool { element == window.id }
     func restoreAndRaise(_ window: UInt32) { effects.append("raise:\(window)") }

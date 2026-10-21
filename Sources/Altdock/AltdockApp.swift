@@ -79,7 +79,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             fullScreenReturn?.observe(windows: windows, regularProcessIDs: processIDs)
         }
         let preferences = DockPreferences(style: systemDock.dockStyle ?? DockStyle())
-        let model = DockModel(preferences: preferences, windowTracker: windowTracker)
+        let model = DockModel(preferences: preferences, windowTracker: windowTracker, minimizedWindowEvents: MinimizedWindowEvents())
         self.model = model
         model.start()
         let dock = DockPanelController(

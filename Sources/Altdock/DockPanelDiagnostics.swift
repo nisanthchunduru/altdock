@@ -8,6 +8,7 @@ struct DockPanelReport: Codable, Equatable {
         let applicationProcessIDs: [Int32]
         let frame: String
         let ordered: Bool
+        var minimizedWindowIDs: [UInt32] = []
     }
     let displayID: UInt32?
     let activeSpaceID: UInt64?

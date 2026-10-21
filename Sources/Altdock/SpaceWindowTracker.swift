@@ -10,6 +10,7 @@ struct SpaceWindowSelection {
 @MainActor
 protocol SpaceWindowTracking {
     var usesSkyLight: Bool { get }
+    var hasFreshSnapshot: Bool { get }
     var backendDescription: String { get }
     func refresh(regularProcessIDs: Set<Int32>)
     func activeSpaceID(on displayBounds: CGRect) -> UInt64?
@@ -19,6 +20,7 @@ protocol SpaceWindowTracking {
 }
 
 extension SpaceWindowTracking {
+    var hasFreshSnapshot: Bool { true }
     func activeSpaceID(on displayBounds: CGRect) -> UInt64? { nil }
     func fullScreenSpaceIDs(on displayBounds: CGRect) -> Set<UInt64>? { nil }
     func allSelections(on displayBounds: CGRect, regularProcessIDs: Set<Int32>) -> [UInt64: [SpaceWindow]]? { nil }
@@ -28,12 +30,15 @@ extension SpaceWindowTracking {
 final class SpaceWindowTracker: SpaceWindowTracking {
     private let spaces: (any SpaceQuerying)?
     private let captureWindows: (CGWindowListOption) -> [SpaceWindow]?
+    private let minimizedWindows: (any MinimizedWindowReading)?
+    private var knownMinimized: [Int32: [MinimizedWindowInfo]] = [:]
     private(set) var index: SpaceWindowIndex?
     var didCaptureWindows: (([SpaceWindow], Set<Int32>) -> Void)?
     private var onScreenWindows: [SpaceWindow]?
     private var lastSnapshotSucceeded = false
 
     var usesSkyLight: Bool { index != nil }
+    var hasFreshSnapshot: Bool { lastSnapshotSucceeded }
     var backendDescription: String {
         guard usesSkyLight else { return "Public API · On-screen fallback" }
         return lastSnapshotSucceeded ? "SkyLight · All Spaces" : "SkyLight · Cached Spaces (refresh pending)"
@@ -42,10 +47,12 @@ final class SpaceWindowTracker: SpaceWindowTracking {
     init(usePrivateAPI: Bool = true) {
         spaces = usePrivateAPI ? SkyLightSpaces() : nil
         captureWindows = WindowSnapshot.capture
+        minimizedWindows = usePrivateAPI ? MinimizedWindowReader() : nil
     }
 
-    init(spaces: (any SpaceQuerying)?, captureWindows: @escaping (CGWindowListOption) -> [SpaceWindow]?) {
+    init(spaces: (any SpaceQuerying)?, minimizedWindows: (any MinimizedWindowReading)? = nil, captureWindows: @escaping (CGWindowListOption) -> [SpaceWindow]?) {
         self.spaces = spaces
+        self.minimizedWindows = minimizedWindows
         self.captureWindows = captureWindows
     }
 
@@ -114,13 +121,36 @@ final class SpaceWindowTracker: SpaceWindowTracking {
             excluding: ProcessInfo.processInfo.processIdentifier,
             on: .infinite, requiringOnScreen: false
         )
-        var membership: [UInt32: Set<UInt64>] = [:]
+        var orderedIDs: Set<UInt32> = []
+        var orderedOut: [SpaceWindow] = []
         for window in candidates {
             guard let isOrderedIn = spaces.isWindowOrderedIn(window.id) else { return nil }
-            guard isOrderedIn else { continue }
+            if isOrderedIn { orderedIDs.insert(window.id) }
+            else { orderedOut.append(window) }
+        }
+        let minimized = confirmedMinimizedWindows(in: orderedOut)
+        var membership: [UInt32: Set<UInt64>] = [:]
+        var eligible: [SpaceWindow] = []
+        for window in candidates where orderedIDs.contains(window.id) || minimized[window.id] != nil {
             guard let identifiers = spaces.spaceIDs(for: window.id) else { return nil }
             membership[window.id] = identifiers
+            eligible.append(SpaceWindow(
+                id: window.id, processID: window.processID, bounds: window.bounds,
+                layer: window.layer, alpha: window.alpha, isOnScreen: window.isOnScreen,
+                isMinimized: minimized[window.id] != nil, title: minimized[window.id]?.title
+            ))
         }
-        return SpaceWindowIndex(windows: candidates, membership: membership, knownSpaceIDs: spaceIDs)
+        return SpaceWindowIndex(windows: eligible, membership: membership, knownSpaceIDs: spaceIDs)
+    }
+
+    private func confirmedMinimizedWindows(in windows: [SpaceWindow]) -> [UInt32: MinimizedWindowInfo] {
+        let byProcess = Dictionary(grouping: windows, by: \.processID)
+        knownMinimized = knownMinimized.filter { byProcess[$0.key] != nil }
+        for (processID, windows) in byProcess {
+            let candidates = Set(windows.map(\.id))
+            let confirmed = minimizedWindows?.minimizedWindows(processID: processID, candidates: candidates)
+            knownMinimized[processID] = (confirmed ?? knownMinimized[processID, default: []]).filter { candidates.contains($0.id) }
+        }
+        return Dictionary(knownMinimized.values.flatMap { $0 }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 }

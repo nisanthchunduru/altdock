@@ -17,6 +17,18 @@ struct DockMembershipAnimationTests {
         #expect(decision(previous: [1, 2, 3], next: [1, 3], edge: edge))
     }
 
+    @Test("Minimized-window membership animates even when the app IDs have not changed", arguments: DockEdge.allCases)
+    func minimizedMembership(_ edge: DockEdge) {
+        let style = DockStyle(edge: edge)
+        #expect(DockMembershipAnimation.shouldAnimate(
+            previousIDs: [1], nextIDs: [1],
+            previousLayout: display.layout(applicationCount: 1, style: style),
+            nextLayout: display.layout(applicationCount: 2, style: style),
+            isSpaceBound: true, isOrdered: true, isOnActiveSpace: true,
+            wasUpdating: false, isUpdating: false, reduceMotion: false, additionalMembershipChanged: true
+        ))
+    }
+
     @Test("Focus updates and repeated snapshots do not restart a resize animation")
     func unchangedMembership() { #expect(!decision(previous: [1, 2], next: [1, 2])) }
 

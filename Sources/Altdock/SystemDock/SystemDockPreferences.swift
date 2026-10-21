@@ -34,18 +34,21 @@ struct SystemDockPreferences: SystemDockPreferenceAccess {
         }
         let orientation = CFPreferencesCopyValue("orientation" as CFString, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
         let autoHide = CFPreferencesCopyValue("autohide" as CFString, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        guard orientation == nil || orientation is String, autoHide == nil || autoHide is NSNumber else {
+        let effect = CFPreferencesCopyValue("mineffect" as CFString, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        guard orientation == nil || orientation is String, autoHide == nil || autoHide is NSNumber,
+              effect == nil || effect is String else {
             throw SystemDockError.backupInvalid
         }
         return SystemDockSettings(
             orientation: orientation as? String, autoHide: (autoHide as? NSNumber)?.boolValue,
-            suppression: try SystemDockSuppression(tileSize: number(for: "tilesize"), autoHideDelay: number(for: "autohide-delay"))
+            suppression: try SystemDockSuppression(tileSize: number(for: "tilesize"), autoHideDelay: number(for: "autohide-delay")),
+            minimization: SystemDockMinimization(effect: effect as? String)
         )
     }
 
     func apply(_ settings: SystemDockSettings) throws {
         let current = try read()
-        let settings = settings.preservingUncapturedSuppression(from: current)
+        let settings = settings.preservingUncapturedPreferences(from: current)
         guard current != settings else { return }
         var changes: [(String, CFPropertyList?)] = []
         if current.orientation != settings.orientation {
@@ -61,6 +64,9 @@ struct SystemDockPreferences: SystemDockPreferenceAccess {
             if current.suppression?.autoHideDelay != suppression.autoHideDelay {
                 changes.append(("autohide-delay", suppression.autoHideDelay.map { NSNumber(value: $0) }))
             }
+        }
+        if let minimization = settings.minimization, minimization.effect != current.minimization?.effect {
+            changes.append(("mineffect", minimization.effect.map { $0 as CFString }))
         }
         for (key, _) in changes where CFPreferencesAppValueIsForced(key as CFString, domain) {
             throw SystemDockError.preferenceWriteFailed

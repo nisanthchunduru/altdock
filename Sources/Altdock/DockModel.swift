@@ -11,6 +11,8 @@ struct DockApplication: Identifiable {
 @MainActor
 final class DockModel: ObservableObject {
     @Published private(set) var applications: [DockApplication] = []
+    @Published private(set) var minimizedWindows: [DockMinimizedWindow] = []
+    @Published private(set) var spaceMinimizedWindows: [UInt64: [DockMinimizedWindow]]?
     @Published private(set) var activeProcessID: Int32?
     @Published private(set) var isSwitchingSpace = true
     @Published private(set) var activeSpaceID: UInt64?
@@ -39,6 +41,9 @@ final class DockModel: ObservableObject {
     private let runningApplications: () -> [NSRunningApplication]
     private let now: () -> Date
     private let activateApplication: (NSRunningApplication, [SpaceWindow]) -> Void
+    private let restoreWindow: (NSRunningApplication, SpaceWindow) -> Void
+    private let minimizedWindowEvents: (any MinimizedWindowObserving)?
+    private var minimizationRefresh: DispatchWorkItem?
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var spaceRefresh: DispatchWorkItem?
@@ -57,7 +62,11 @@ final class DockModel: ObservableObject {
         displayBounds: (() -> CGRect?)? = nil,
         activateApplication: @escaping (NSRunningApplication, [SpaceWindow]) -> Void = {
             ApplicationActivator.activate($0, matching: $1)
-        }
+        },
+        restoreWindow: @escaping (NSRunningApplication, SpaceWindow) -> Void = {
+            ApplicationActivator.restoreMinimizedWindow($0, matching: $1)
+        },
+        minimizedWindowEvents: (any MinimizedWindowObserving)? = nil
     ) {
         self.windowMover = windowMover
         self.displayBounds = displayBounds ?? { preferences.screen.map { CGDisplayBounds($0.displayID) } }
@@ -65,9 +74,13 @@ final class DockModel: ObservableObject {
         self.runningApplications = runningApplications
         self.now = now
         self.activateApplication = activateApplication
+        self.restoreWindow = restoreWindow
+        self.minimizedWindowEvents = minimizedWindowEvents
     }
 
     func start() {
+        guard timer == nil else { return }
+        minimizedWindowEvents?.start { [weak self] in self?.minimizationDidChange() }
         let notifications: [Notification.Name] = [
             NSWorkspace.didLaunchApplicationNotification,
             NSWorkspace.didTerminateApplicationNotification,
@@ -99,13 +112,19 @@ final class DockModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         spaceRefresh?.cancel()
+        minimizationRefresh?.cancel()
+        minimizationRefresh = nil
+        minimizedWindowEvents?.stop()
         moveTask?.cancel()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
     }
 
     func refresh() {
+        minimizationRefresh?.cancel()
+        minimizationRefresh = nil
         let running = runningApplications()
+        minimizedWindowEvents?.update(processIDs: Set(running.map(\.processIdentifier)))
         refreshFullScreenSpaces()
         let destinations = displayBounds().map { windowMover.isAvailable ? windowMover.desktops(on: $0) : [] } ?? []
         if destinations != desktopDestinations { desktopDestinations = destinations }
@@ -124,6 +143,22 @@ final class DockModel: ObservableObject {
         else { return }
         guard expectedSpaceID == nil || selection.spaceID == expectedSpaceID else { return }
         activateApplication(application, selection.windows.filter { $0.processID == application.processIdentifier })
+    }
+
+    func restoreMinimizedWindow(_ item: DockMinimizedWindow, expectedSpaceID: UInt64?) {
+        guard !isSwitchingSpace, !isFullScreenSpaceActive, !item.application.isTerminated,
+              let bounds = displayBounds() else { return }
+        let runningIDs = Set(runningApplications().map(\.processIdentifier))
+        guard runningIDs.contains(item.id.processID) else { return }
+        windowTracker.refresh(regularProcessIDs: runningIDs)
+        guard windowTracker.hasFreshSnapshot,
+              let selection = windowTracker.selection(on: bounds, regularProcessIDs: runningIDs),
+              expectedSpaceID == nil || selection.spaceID == expectedSpaceID,
+              let window = selection.windows.first(where: {
+                  $0.id == item.id.windowID && $0.processID == item.id.processID && $0.isMinimized
+              }) else { return }
+        restoreWindow(item.application, window)
+        refresh()
     }
 
     func moveWindows(of application: NSRunningApplication, from source: UInt64, to destination: UInt64) {
@@ -180,6 +215,8 @@ final class DockModel: ObservableObject {
         let bounds = displayBounds()
         if bounds != cachedDisplayBounds {
             spaceApplications = nil
+            spaceMinimizedWindows = nil
+            minimizedWindows = []
             cachedDisplayBounds = bounds
         }
         guard let bounds, let selections = windowTracker.allSelections(
@@ -187,6 +224,7 @@ final class DockModel: ObservableObject {
         ) else { return }
         let byID = Dictionary(uniqueKeysWithValues: running.map { ($0.processIdentifier, $0) })
         var snapshots: [UInt64: [DockApplication]] = [:]
+        var minimizedSnapshots: [UInt64: [DockMinimizedWindow]] = [:]
         for (spaceID, windows) in selections {
             let ordered = SpaceApplications.orderedProcessIDs(
                 windows: windows, previousOrder: iconOrders[spaceID, default: []],
@@ -194,7 +232,11 @@ final class DockModel: ObservableObject {
             )
             iconOrders[spaceID] = DockIconOrder.remembering(ordered, previous: iconOrders[spaceID, default: []])
             snapshots[spaceID] = ordered.compactMap { byID[$0].map(DockApplication.init) }
+            minimizedSnapshots[spaceID] = DockMinimizedWindow.ordered(
+                windows: windows, applications: byID, previous: spaceMinimizedWindows?[spaceID] ?? []
+            )
         }
+        if spaceMinimizedWindows != minimizedSnapshots { spaceMinimizedWindows = minimizedSnapshots }
         if spaceApplications?.mapValues({ $0.map(\.id) }) != snapshots.mapValues({ $0.map(\.id) }) {
             spaceApplications = snapshots
         }
@@ -211,10 +253,17 @@ final class DockModel: ObservableObject {
             let cached = destination.flatMap { spaceApplications?[$0] } ?? []
             let available = cached.filter { applicationsByID[$0.id] != nil }
             if applications.map(\.id) != available.map(\.id) { applications = available }
+            let minimized = (destination.flatMap { spaceMinimizedWindows?[$0] } ?? []).filter { applicationsByID[$0.id.processID] != nil }
+            if minimizedWindows != minimized { minimizedWindows = minimized }
             if activeSpaceID != destination { activeSpaceID = destination }
             if !isSwitchingSpace { isSwitchingSpace = true }
             return false
         }
+        let minimized = DockMinimizedWindow.ordered(
+            windows: selection.windows, applications: applicationsByID,
+            previous: selection.spaceID.flatMap { spaceMinimizedWindows?[$0] } ?? minimizedWindows
+        )
+        if minimizedWindows != minimized { minimizedWindows = minimized }
         let orderKey = selection.spaceID ?? 0
         let orderedIDs = SpaceApplications.orderedProcessIDs(
             windows: selection.windows, previousOrder: iconOrders[orderKey, default: []],
@@ -230,6 +279,17 @@ final class DockModel: ObservableObject {
         if activeProcessID != frontmostID { activeProcessID = frontmostID }
         if isSwitchingSpace { isSwitchingSpace = false }
         return true
+    }
+
+    private func minimizationDidChange() {
+        guard timer != nil, minimizationRefresh == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.timer != nil else { return }
+            self.minimizationRefresh = nil
+            self.refresh()
+        }
+        minimizationRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01, execute: work)
     }
 
     private func scheduleRefresh(after delay: TimeInterval) {

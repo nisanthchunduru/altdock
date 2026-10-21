@@ -4,14 +4,16 @@ import AppKit
 @MainActor
 final class DockPresentation: ObservableObject {
     @Published private(set) var applications: [DockApplication] = []
+    @Published private(set) var minimizedWindows: [DockMinimizedWindow] = []
     @Published private(set) var activeProcessID: Int32?
     @Published private(set) var isUpdating = false
     @Published private(set) var style = DockStyle()
     @Published private(set) var destinations: [DesktopDestination] = []
     var iconSize: CGFloat { style.iconSize }
 
-    func update(applications: [DockApplication], isUpdating: Bool, style: DockStyle) {
+    func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow] = [], isUpdating: Bool, style: DockStyle) {
         if self.applications.map(\.id) != applications.map(\.id) { self.applications = applications }
+        if self.minimizedWindows != minimizedWindows { self.minimizedWindows = minimizedWindows }
         if self.isUpdating != isUpdating { self.isUpdating = isUpdating }
         if self.style != style { self.style = style }
     }

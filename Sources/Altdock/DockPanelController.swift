@@ -44,6 +44,8 @@ final class DockPanelController: ObservableObject {
                     { [weak model] application, destination in model?.moveWindows(of: application, from: source, to: destination) }
                 }, reorderApplication: spaceID.map { source in
                     { [weak model] processID, index in model?.reorderApplication(processID, to: index, on: source) }
+                }, restoreMinimizedWindow: { [weak model] item in
+                    model?.restoreMinimizedWindow(item, expectedSpaceID: spaceID)
                 }) { [weak model] application in
                     model?.activate(application, expectedSpaceID: spaceID)
                 }
@@ -51,6 +53,10 @@ final class DockPanelController: ObservableObject {
         }
         model.$spaceApplications.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
+        model.$spaceMinimizedWindows.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
+        model.$minimizedWindows.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCurrentSpace() }.store(in: &subscriptions)
         model.$fullScreenSpaceIDs.dropFirst().receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.synchronizePanels() }.store(in: &subscriptions)
         model.$desktopDestinations.combineLatest(model.$isMovingWindows).receive(on: RunLoop.main)
@@ -115,7 +121,9 @@ final class DockPanelController: ObservableObject {
         for id in snapshots.keys.sorted() {
             guard let applications = snapshots[id], !failedSpaces.contains(id), !model.fullScreenSpaceIDs.contains(id) else { continue }
             let surface = surfaces[id] ?? makeSurface(id)
-            surface.update(applications: applications, isUpdating: false, layout: display.layout(applicationCount: applications.count, style: preferences.style))
+            let minimized = model.spaceMinimizedWindows?[id] ?? []
+            surface.update(applications: applications, minimizedWindows: minimized, isUpdating: false,
+                           layout: display.layout(applicationCount: applications.count + minimized.count, style: preferences.style))
             if surfaces[id] == nil {
                 guard surface.attach(to: id) else {
                     surface.close()
@@ -144,8 +152,8 @@ final class DockPanelController: ObservableObject {
             let surface = sharedSurface ?? makeSurface(nil)
             sharedSurface = surface
             surface.update(
-                applications: model.applications, isUpdating: model.isSwitchingSpace,
-                layout: display.layout(applicationCount: model.applications.count, style: preferences.style)
+                applications: model.applications, minimizedWindows: model.minimizedWindows, isUpdating: model.isSwitchingSpace,
+                layout: display.layout(applicationCount: model.applications.count + model.minimizedWindows.count, style: preferences.style)
             )
             surface.updateFocus(model.activeProcessID)
         }
@@ -215,10 +223,10 @@ final class DockPanelController: ObservableObject {
     private func publishReport() {
         var panels = surfaces.keys.sorted().compactMap { id -> DockPanelReport.Panel? in
             guard let surface = surfaces[id] else { return nil }
-            return .init(spaceID: id, windowNumber: surface.windowNumber, applicationProcessIDs: model.spaceApplications?[id]?.map(\.id) ?? [], frame: NSStringFromRect(surface.frame), ordered: surface.isOrdered)
+            return .init(spaceID: id, windowNumber: surface.windowNumber, applicationProcessIDs: model.spaceApplications?[id]?.map(\.id) ?? [], frame: NSStringFromRect(surface.frame), ordered: surface.isOrdered, minimizedWindowIDs: model.spaceMinimizedWindows?[id]?.map { $0.id.windowID } ?? [])
         }
         if let sharedSurface {
-            panels.append(.init(spaceID: nil, windowNumber: sharedSurface.windowNumber, applicationProcessIDs: model.applications.map(\.id), frame: NSStringFromRect(sharedSurface.frame), ordered: sharedSurface.isOrdered))
+            panels.append(.init(spaceID: nil, windowNumber: sharedSurface.windowNumber, applicationProcessIDs: model.applications.map(\.id), frame: NSStringFromRect(sharedSurface.frame), ordered: sharedSurface.isOrdered, minimizedWindowIDs: model.minimizedWindows.map { $0.id.windowID }))
         }
         report(DockPanelReport(displayID: display?.id, activeSpaceID: model.activeSpaceID, fullScreenSpaceIDs: model.fullScreenSpaceIDs.sorted(), mode: stopped ? "Stopped" : presentationDescription, style: preferences.style, panels: panels))
     }

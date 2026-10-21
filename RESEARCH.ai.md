@@ -5,7 +5,7 @@
 - Show apps belonging to the selected display's current Space; retain a macOS Dock-like interface.
 - Cache all-Spaces window membership rather than emptying the dock during Space transitions.
 - Reserve room for Altdock **by default**, using Accessibility-based avoidance for maximized/tiled windows. Permission must still be granted through macOS; it cannot be silently enabled.
-- Capture the system Dock's original edge, base icon size and thickness before parking it. Altdock uses that edge and size, with per-Space length. Bottom/left originals park the system Dock on the right; right originals park it at the bottom. Enable auto-hide; temporarily reduce native icons to 1 point and set a 1,000-second auto-show delay. Restore all four original settings on exit. Never modify native magnification, Dock items, or minimize/launch animation preferences.
+- Capture the system Dock's original edge, base icon size and thickness before parking it. Altdock uses that edge and size, with per-Space length. Keep the native Dock on the same original edge as Altdock. Enable auto-hide; temporarily reduce native icons to 1 point, set a 1,000-second auto-show delay, and select Scale minimization. Restore all five original settings on exit. Never modify native magnification, Dock items, minimize-to-application, or launch-animation preferences.
 - Screen-space avoidance is not a WindowServer-wide reservation. Do not promise that every app or manually placed window will comply.
 
 ## Source review
@@ -18,7 +18,7 @@ Commit: `44bf925639e079c5edf8284fd8edc2c157349ee5` (GPLv3).
 
 - [WindowReservationService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/WindowReservationService.swift): reacts to the window registry's AX updates when resize mode and Accessibility are enabled. Requires overlap and at least two edges aligned with the screen's visible frame. Shrinks maximized/half/quarter-tiled windows while leaving ordinary floating windows alone. Uses a 250 ms per-window cooldown.
 - [WindowRegistry.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/WindowRegistry.swift): AX observers and position/size writes; attempts to refresh stale window handles.
-- [SystemDockVisibilityService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/SystemDockVisibilityService.swift): snapshots Dock preferences and has a watchdog restoration mechanism. Altdock should touch only explicitly approved settings (now position, auto-hide, icon size, auto-show delay), not this project's larger set of animation settings.
+- [SystemDockVisibilityService.swift](https://github.com/josejuanqm/docky/blob/44bf925639e079c5edf8284fd8edc2c157349ee5/Docky/Services/SystemDockVisibilityService.swift): snapshots Dock preferences and has a watchdog restoration mechanism. Altdock should touch only explicitly approved settings (now position, auto-hide, icon size, auto-show delay, minimize effect), not this project's larger set of animation settings.
 
 ### OpenBoringBar — broader bottom guard
 
@@ -61,11 +61,11 @@ InfyniDock's GitHub checkout (`5042fb5`) contained only a README, not implementa
 4. Revalidate identity and geometry before writing; preserve top/left/width. Check results rather than assuming AX success implies the requested size was accepted.
 5. Track original and last-applied rectangles per window. Suppress self-generated events; stop on external/manual changes or repeated competing writes. Never blindly restore a stale original frame.
 6. Do not resize windows each time an auto-hidden dock reveals. Reservation is suspended while Altdock is hidden or auto-hide is enabled.
-7. Normal exit/disable can safely restore unchanged frames. Force-quit recovery of arbitrary app windows is not guaranteed; the system Dock's four borrowed preferences have a separate durable restoration mechanism.
+7. Normal exit/disable can safely restore unchanged frames. Force-quit recovery of arbitrary app windows is not guaranteed; the system Dock's five borrowed preferences have a separate durable restoration mechanism.
 
 ## System Dock lifecycle
 
-Save the exact prior presence/value of `com.apple.dock` keys `orientation`, `autohide`, `tilesize`, and `autohide-delay` before changing anything. Missing keys must be restored by deletion, not replaced by guessed defaults. Update keys individually; never replace the whole preference domain. Synchronize and restart the current user's system Dock only when values change.
+Save the exact prior presence/value of `com.apple.dock` keys `orientation`, `autohide`, `tilesize`, `autohide-delay`, and `mineffect` before changing anything. Missing keys must be restored by deletion, not replaced by guessed defaults. Update keys individually; never replace the whole preference domain. Synchronize and restart the current user's system Dock only when values change.
 
 Use a persistent original-settings record and a session lock to prevent duplicate instances from overwriting the original snapshot. A lightweight child process can wait for that lock to be released on exit/crash and restore the recorded settings. A session token prevents an old child from restoring a newer session's settings. Normal quit also restores while holding the lock. A retained record allows recovery on next launch if both parent and guardian are killed or the machine loses power. Do not install a permanent LaunchAgent just for this.
 
@@ -84,7 +84,7 @@ Use a persistent original-settings record and a session lock to prevent duplicat
 - `ReservationLedger.swift`: per-window originals, last-applied frames, cooldown/retry bounds, manual-override suppression, and restoration guards.
 - `ReservationFrameTransaction.swift`: expected-frame validation, read-back verification, and guarded rollback of partial height changes.
 - `Sources/Altdock/Reservation/`: background actor, AX element access, per-app/window observers, and main-thread configuration/event coordination. Individual AX objects need their own messaging timeout: Apple's `AXUIElement.h` explicitly says an application object's timeout does **not** propagate to other objects, even equivalent ones.
-- `Sources/Altdock/SystemDock/`: four-key preference access plus durable session/guardian handling. The guardian is the same executable in a headless `--restore-dock-after-exit` mode, started before preferences are changed. Its waiting file lock is released by the OS if the owner dies. No accessibility permission is needed to restore these preferences.
+- `Sources/Altdock/SystemDock/`: five-key preference access plus durable session/guardian handling. The guardian is the same executable in a headless `--restore-dock-after-exit` mode, started before preferences are changed. Its waiting file lock is released by the OS if the owner dies. No accessibility permission is needed to restore these preferences.
 - `DockPreferences.reserveSpace`: missing preference means `true`; an explicit user opt-out remains persistent. Auto-hide and manually hiding Altdock suspend reservation instead of resizing on every reveal.
 - `Tests/AltdockCoreTests/Reservation*` and `Tests/AltdockTests/SystemDockSessionTests.swift`: deterministic safety tests, with isolated stores rather than live preference mutations.
 
@@ -258,11 +258,41 @@ Regression tests cover original/deleted/reordered Desktops, minimized windows, s
 
 ## Accepted native-Dock suppression
 
-The user accepted a thin remaining Mission Control strip. Altdock now combines its existing parking/auto-hide behavior with `tilesize=1` and `autohide-delay=1000`. A native test on macOS 26.7.1 showed these settings shrink the native Dock substantially but do not completely hide it in Mission Control. Sidebar 2.2.8 static binary inspection also found this size/delay pair; Altdock does not adopt its unrelated no-bouncing/minimize-effect changes.
+The user accepted a thin remaining Mission Control strip. Altdock now combines its existing parking/auto-hide behavior with `tilesize=1` and `autohide-delay=1000`. A native test on macOS 26.7.1 showed these settings shrink the native Dock substantially but do not completely hide it in Mission Control. Sidebar 2.2.8 static binary inspection also found this size/delay pair; No-bouncing is not adopted. Scale minimization was subsequently accepted separately, as described below.
 
 `SystemDockSettings.suppression` distinguishes an old record that never captured these preferences (`nil`) from a new record that captured both as absent (a present object with nil fields). On upgrade, a saved old position/auto-hide pair is preserved while current size/delay values are captured before any write. Applying an old record does not delete uncaptured keys. Appearance is captured before shrinking and retained through crash recovery. Reads reject invalid numeric values; writes retain existing forced-preference preflight, read-back verification and idempotence.
 
 Tests cover four-key restore, exact absence, non-default/fractional originals, old-record migration/restoration, crash/relaunch, unchanged settings, invalid reads and unrelated preferences. Native signed-app quit/relaunch verification confirmed all four values/presence restored exactly, original 64-point Altdock artwork retained, and one-point/1,000-second suppression reapplied only while running.
+
+## Minimized-window inclusion and Scale minimization
+
+`SpaceWindowTracker` checks ordered-in status first, groups only ordered-out eligible candidates by PID, then asks `MinimizedWindowReader` once per process per refresh. The reader uses AXWindows, exact `_AXUIElementGetWindow` IDs, PID ownership, AXWindow role, and a true AXMinimized Boolean. No size/title guesses or permission prompts. AX calls have 100ms messaging timeouts. Unreadable results retain only previously confirmed minimized candidates; confirmed non-minimized/missing windows clear state. Membership and display geometry filtering remain unchanged. The existing Move to action still excludes ordered-out windows. A running signed-app check also retained a minimized disposable fixture in its correct Desktop panel; with the new startup preference applied, its Scale animation completed in approximately 0.28s. A real quit/relaunch cycle restored the original five preference values/presence (including Genie) and reapplied Scale without shrinking Altdock's 64-point icons.
+
+Activation's focused-window no-op additionally requires confirmed non-minimized state, so a remembered focused minimized window is restored rather than ignored. A signed, two-process native probe using the actual tracker/reader/activator confirmed an ordered-out minimized fixture remained locally discoverable and could be restored on the same Desktop. No user windows were minimized by the probe.
+
+Native animation testing on macOS26.7.1 measured approximately 0.57s for Genie, 0.55s for the unsupported `mineffect=none` value, and 0.26s for Scale. The user accepted Scale plus keeping Apple's tiny hidden Dock on Altdock's edge. `SystemDockSettings.minimization` captures the original effect separately, distinguishing uncaptured legacy records from captured absence. Legacy two-/four-key backups are upgraded before mutation; normal/crash restoration preserves the original effect or deletes a previously absent key. No global animation/Reduce Motion override is used, and Scale is not described as disabling animation.
+
+## Separate minimized-window tiles
+
+Discovery annotates eligible windows with minimized state and an optional Accessibility title. `DockModel` keeps ordered minimized-window lists per Space separately from app PID ordering. `DockMinimizedWindow` identities combine PID and window ID; the panel's length counts both app icons and minimized-window slots. Presentation observes minimized membership independently, so minimizing a second window changes the dock even if its app was already present. Membership transitions also animate these changes.
+
+`DockMinimizedWindowIcon` renders a window-shaped title card with an app badge and native cell geometry. These are not live screenshots; no Screen Recording permission is requested. A separator starts the section; hover labels expose full titles, and button/context-menu Restore targets the individual window. Minimized tiles are not part of app drag ordering.
+
+Restore re-reads discovery, requires a successful private snapshot and matching current Space/PID/window identity, then freshly verifies the selected AX window is still minimized before clearing AXMinimized, raising it and activating its app. It does not substitute the app's remembered focused sibling. Closed, already-restored, other-Desktop or unreadable targets no-op.
+
+Native signed-app UI verification used an app with two distinct minimized windows. Pressing its Budget tile through Accessibility restored Budget, left Notes minimized, removed only Budget's tile, and shrank the actual panel. A screenshot verified the two title cards/app badges and separator. The disposable fixture required automatic window tabbing disabled and settled minimization before inspection; the AX driver needed enough action timeout for real restore processing. Tests cover per-window identity, stale actions, per-Space caching/order, label changes, sizing and all-edge rendering. No user app windows were restored/minimized by the test.
+
+## Balanced minimized-section separator
+
+The separator was aligned to the first minimized button's leading/top edge, ignoring the six-point inter-cell gap and the window card's inset inside its native icon cell. `DockMinimizedWindowLayout` now computes both the preview bounds and a one-point separator midway between the preceding app artwork's trailing edge and the preview's leading edge. `DockIconArtwork` measures visible alpha bounds in a small 128px raster, ignoring faint shadows; its last-image cache holds only a weak image reference. This is local app-icon processing, not a window screenshot, and adds no polling. Line thickness is included, so the two edge-to-edge gaps are equal. The SwiftUI stack and geometry share `DockIconLayout.spacing`; tile positions and total dock length do not change. Tests cover bottom/left/right edges and six icon sizes, unchanged preview size/centering, and asymmetric transparent app-icon padding checked against actual SwiftUI-rendered pixels.
+
+## Prompt minimized-tile appearance
+
+`MinimizedApplicationObserver` registers AXWindowMiniaturized/AXWindowDeminiaturized on each regular app's application element. Native registration and event delivery were verified on macOS26.7.1. `MinimizedWindowEvents` owns these observers independently of reservation, removes them for terminated apps or missing permission, and rejects stale per-PID callbacks. No automatic permission prompt. A failed/partial subscription is cleaned up; retries back off from 0.25s through 0.5/1/2/4s to 5s, driven by existing refreshes. An initial flat 5s retry proved too slow for newly launched apps whose AX server was not ready yet.
+
+DockModel coalesces minimize/restore events for 10ms on the main queue, then performs the existing fresh discovery. An already-triggered refresh consumes the pending work; stop cancels it. The 750ms discovery interval and 240ms membership animation remain unchanged. Unsupported event sources still rely on that fallback; event timing is controlled by macOS, so this is not a prediction of a user's minimize action.
+
+Native before/after measurements observed the start of the actual panel-width animation after each fixture AX miniaturize event. Before: about116ms and688ms for two windows. After the startup-retry fix: about90ms and82ms. These are short live timing samples, not a guaranteed latency bound. Only disposable fixture windows were minimized. Tests cover prompt/coalesced refresh, cancellation, permission changes, observer reuse, PID removal/reuse, partial-failure backoff, and cleanup.
 
 ## Verification priorities
 
