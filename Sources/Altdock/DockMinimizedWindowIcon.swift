@@ -11,6 +11,7 @@ struct DockMinimizedWindowIcon: View {
     var precedingIconTrailingInset: CGFloat = 0
     let restore: () -> Void
     @MinimizedIconState private var isHovered = false
+    @StateObject private var contextMenu = DockContextMenuController()
 
     private var layout: DockIconLayout { DockIconLayout(style: style, isActive: false) }
     private var minimizedLayout: DockMinimizedWindowLayout { DockMinimizedWindowLayout(style: style, precedingIconTrailingInset: precedingIconTrailingInset) }
@@ -59,10 +60,9 @@ struct DockMinimizedWindowIcon: View {
         .accessibilityLabel("Restore \(window.name)")
         .accessibilityValue("Minimized window of \(window.application.localizedName ?? "Application")")
         .accessibilityHint("Restore this specific window on this Desktop")
-        .contextMenu {
-            Text(window.name)
-            Divider()
-            Button("Restore", action: restore)
-        }
+        .overlay(DockContextMenuAnchor(controller: contextMenu, edge: style.edge) { [window, restore] in
+            DockContextMenus.minimizedWindow(window, restore: restore)
+        }.accessibilityHidden(true))
+        .accessibilityAction(named: Text("Show Menu")) { contextMenu.show() }
     }
 }

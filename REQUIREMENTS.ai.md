@@ -94,6 +94,21 @@ References: [DockTooltipController.swift](Sources/Altdock/DockTooltipController.
 - **AD-HOVER-004** — If a label exceeds the available screen width, then Altdock shall ellipsize it rather than wrap it onto multiple lines.
 - **AD-HOVER-005** — When hover ends, a menu starts tracking, the Space changes, or the anchor becomes unavailable, Altdock shall dismiss the corresponding hover label.
 
+### Icon context menus
+
+References: [DockContextMenuController.swift](Sources/Altdock/DockContextMenuController.swift), [DockContextMenus.swift](Sources/Altdock/DockContextMenus.swift), [DockContextMenuGeometry.swift](Sources/AltdockCore/DockContextMenuGeometry.swift), [context-menu checks](TESTING.ai.md#context-menu-positioning).
+
+- **AD-MENU-001** — When the user opens an app icon's or minimized window's context menu, Altdock shall anchor it to that icon rather than the exact pointer position within it.
+- **AD-MENU-002** — When a context menu opens on a bottom dock, Altdock shall place it above the dock when screen space permits.
+- **AD-MENU-003** — When a context menu opens on a side dock, Altdock shall place it toward the desktop from that edge when screen space permits.
+- **AD-MENU-004** — If a menu would extend beyond the display's usable area, then Altdock shall adjust its position and allow macOS to clip or scroll it as needed.
+- **AD-MENU-005** — When the user Control-clicks an icon or invokes its accessibility Show Menu action, Altdock shall use the same menu placement as a right-click.
+- **AD-MENU-006** — While an icon's context menu is open, Altdock shall keep the corresponding auto-hidden dock visible.
+- **AD-MENU-007** — When the active Desktop changes or the menu's icon disappears, Altdock shall dismiss the menu.
+- **AD-MENU-008** — Altdock shall preserve ordinary clicks, hover, dragging, and existing menu actions when providing icon-anchored menus.
+- **AD-MENU-009** — When opening a context menu, Altdock shall leave the foreground application unchanged until the user chooses an action that changes it.
+- **AD-MENU-010** — Altdock shall position context menus using the icon's display coordinates and respect right-to-left layout.
+
 ### Application activation
 
 References: [ApplicationActivator.swift](Sources/Altdock/ApplicationActivator.swift).

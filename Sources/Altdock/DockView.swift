@@ -135,6 +135,7 @@ private struct DockIcon: View {
     let isBusy: Bool
     let activate: () -> Void
     @DockViewState private var isHovered = false
+    @StateObject private var contextMenu = DockContextMenuController()
 
     var body: some View {
         Button(action: activate) {
@@ -148,26 +149,11 @@ private struct DockIcon: View {
         .accessibilityLabel(application.name)
         .accessibilityValue(isActive ? "Active application" : "Running")
         .accessibilityHint("Switch to this application")
-        .contextMenu {
-            Text(application.name)
-            Divider()
-            Button("Open", action: activate)
-            Button("New Window") { createWindow?(application.application) }
-                .disabled(createWindow == nil || isBusy)
-            Menu("Move Focused Window") {
-                ForEach(destinations) { destination in
-                    Button(destination.name) { moveFocusedWindow?(application.application, destination.id) }
-                }
-            }.disabled(moveFocusedWindow == nil || destinations.isEmpty || isBusy)
-            Menu("Move") {
-                ForEach(destinations) { destination in
-                    Button(destination.name) { moveWindows?(application.application, destination.id) }
-                }
-            }.disabled(moveWindows == nil || destinations.isEmpty)
-            Button("Hide") { application.application.hide() }
-            Divider()
-            Button("Quit") { application.application.terminate() }
-        }
+        .overlay(DockContextMenuAnchor(controller: contextMenu, edge: style.edge) { [application, destinations, isBusy, activate, createWindow, moveFocusedWindow, moveWindows] in
+            DockContextMenus.application(application, destinations: destinations, isBusy: isBusy, activate: activate,
+                                         createWindow: createWindow, moveFocusedWindow: moveFocusedWindow, moveWindows: moveWindows)
+        }.accessibilityHidden(true))
+        .accessibilityAction(named: Text("Show Menu")) { contextMenu.show() }
     }
 }
 

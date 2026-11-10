@@ -7,6 +7,7 @@ protocol DockSurface: AnyObject {
     var frame: CGRect { get }
     var isOrdered: Bool { get }
     var isKeyWindow: Bool { get }
+    var keepsDockVisible: Bool { get }
     var windowNumber: Int { get }
     func update(applications: [DockApplication], isUpdating: Bool, layout: DockPanelLayout)
     func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout)
@@ -20,6 +21,7 @@ protocol DockSurface: AnyObject {
 }
 
 extension DockSurface {
+    var keepsDockVisible: Bool { isKeyWindow }
     func update(applications: [DockApplication], minimizedWindows: [DockMinimizedWindow], isUpdating: Bool, layout: DockPanelLayout) {
         update(applications: applications, isUpdating: isUpdating, layout: layout)
     }
@@ -45,6 +47,7 @@ final class NativeDockSurface: DockSurface {
 
     var frame: CGRect { panel.frame }
     var isKeyWindow: Bool { panel.isKeyWindow }
+    var keepsDockVisible: Bool { panel.isKeyWindow || DockContextMenuController.isTracking(in: panel) }
     var windowNumber: Int { panel.windowNumber }
 
     init(spaceID: UInt64?, placement: SpacePanelPlacement, moveWindows: ((NSRunningApplication, UInt64) -> Void)? = nil, reorderApplication: ((Int32, Int) -> Void)? = nil, restoreMinimizedWindow: ((DockMinimizedWindow) -> Void)? = nil, createWindow: ((NSRunningApplication) -> Void)? = nil, moveFocusedWindow: ((NSRunningApplication, UInt64) -> Void)? = nil, activate: @escaping (NSRunningApplication) -> Void) {

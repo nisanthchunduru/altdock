@@ -214,7 +214,7 @@ final class DockPanelController: ObservableObject {
         let mouse = NSEvent.mouseLocation
         let reveal = DockGeometry.revealZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
         let travel = DockGeometry.travelZone(panel: surface.frame, screen: display.frame, edge: preferences.style.edge)
-        if reveal.contains(mouse) || (surface.isOrdered && travel.contains(mouse)) || surface.isKeyWindow {
+        if reveal.contains(mouse) || (surface.isOrdered && travel.contains(mouse)) || surface.keepsDockVisible {
             lastInteraction[currentKey] = Date()
         }
         if Date().timeIntervalSince(lastInteraction[currentKey, default: .distantPast]) < 0.65 { surface.show() }

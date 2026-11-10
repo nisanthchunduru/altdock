@@ -109,6 +109,12 @@ The checklist below must also be performed on a real Mac. It is a test plan, not
 - [ ] Switch Desktops/displays with minimized windows: show only local tiles, including cached destination tiles during transitions. Stale clicks from outgoing panels, missing snapshots, closed windows and already-restored targets must not raise another window.
 - [ ] Test long/missing titles, bottom/left/right edges, overflowing docks, Reduce Motion, and app drag reordering alongside the fixed minimized section. These tiles are not live screenshots; no Screen Recording prompt should appear.
 
+### Context-menu positioning
+
+- [ ] Right-click near both sides of the same app icon: its menu must open at the same icon-anchored position above a bottom dock, or inward from a left/right dock, without covering the bar when space permits. Repeat for a minimized-window tile.
+- [ ] Test Control-click, accessibility Show Menu, keyboard submenu navigation and Escape. Opening the menu must not activate the app or change its focused window. Existing Open/New Window/Move Focused Window/Move/Hide/Quit/Restore actions retain their behavior.
+- [ ] Test near display edges, on negatively positioned displays, with scrolling/clipped icons and long labels. Native AppKit clipping/scrolling should keep the menu usable. Auto-hide must keep the bar visible while tracking; switching Desktops or removing the anchor closes the menu. Ordinary clicks and icon dragging must still pass through normally.
+
 ### Application switching
 
 - [ ] Click each icon: its app activates; the frontmost indicator updates.
